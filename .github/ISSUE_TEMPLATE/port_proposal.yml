@@ -1,0 +1,23 @@
+name: Port proposal
+description: Propose a new reviewed local plugin port or category.
+title: "port: "
+labels: [port]
+body:
+  - type: input
+    attributes:
+      label: Proposed port ID
+      placeholder: productivity/example
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Problem and proposed behavior
+      description: Explain the local workflow the port improves.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: API and security considerations
+      description: List required fpasoterm plugin APIs and any external command requirements. Do not include credentials.
+    validations:
+      required: true

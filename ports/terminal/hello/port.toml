@@ -1,0 +1,10 @@
+[port]
+id = "terminal/hello"
+name = "hello"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Writes the minimal fpasoterm plugin confirmation after startup."
+license = "MIT"
+minFpasotermVersion = "1.5.5"
+source = "plugin.ts"
+installPath = "terminal/hello.ts"

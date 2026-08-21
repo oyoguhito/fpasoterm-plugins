@@ -1,0 +1,10 @@
+[port]
+id = "appearance/high-contrast"
+name = "high-contrast"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Applies a high-contrast palette for clearly separated terminal colors."
+license = "MIT"
+minFpasotermVersion = "1.5.5"
+source = "plugin.ts"
+installPath = "appearance/high-contrast.ts"

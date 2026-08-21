@@ -1,0 +1,10 @@
+[port]
+id = "appearance/teal"
+name = "teal"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Applies a teal terminal palette with a translucent dark background."
+license = "MIT"
+minFpasotermVersion = "1.5.5"
+source = "plugin.ts"
+installPath = "appearance/teal.ts"

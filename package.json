@@ -1,13 +1,16 @@
 {
   "name": "fpasoterm-plugins",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Ports-style community plugins for fpasoterm.",
   "license": "MIT",
   "scripts": {
     "check": "npm run check:syntax && npm test",
-    "check:syntax": "node --check scripts/ports.js && node --check scripts/tests.js",
+    "check:syntax": "node --check scripts/ports.js && node --check scripts/tests.js && node --check scripts/security/scan-secrets.js",
     "test": "node scripts/tests.js",
+    "scan:secrets": "node scripts/security/scan-secrets.js",
+    "audit:prod": "npm audit --omit=dev",
+    "security": "npm run scan:secrets && npm run audit:prod",
     "ports": "node scripts/ports.js"
   },
   "engines": {

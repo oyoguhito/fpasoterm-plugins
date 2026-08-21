@@ -2,6 +2,7 @@
 id = "terminal/status-banner"
 name = "status-banner"
 version = "1.0.0"
+author = "oyoguhito"
 description = "Adds a Plugins menu command that prints terminal status."
 license = "MIT"
 minFpasotermVersion = "1.5.5"
