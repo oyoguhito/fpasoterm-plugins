@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a reproducible problem with a port or the ports CLI.
+title: "bug: "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior. Do not include secrets or private terminal output.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Port ID
+      placeholder: appearance/teal
+  - type: input
+    attributes:
+      label: fpasoterm version
+      placeholder: fpasoterm 1.5.7
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. node scripts/ports.js install ...
+        2. fpasoterm --plugin-enable ...
+        3. Restart fpasoterm
+    validations:
+      required: true

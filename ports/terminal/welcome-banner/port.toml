@@ -2,6 +2,7 @@
 id = "terminal/welcome-banner"
 name = "welcome-banner"
 version = "1.0.0"
+author = "oyoguhito"
 description = "Prints a concise welcome message after the terminal is ready."
 license = "MIT"
 minFpasotermVersion = "1.5.5"
