@@ -1,0 +1,9 @@
+[port]
+id = "terminal/theme"
+name = "theme"
+version = "1.0.0"
+description = "Applies a visible teal terminal palette after startup."
+license = "MIT"
+minFpasotermVersion = "1.5.5"
+source = "plugin.ts"
+installPath = "terminal/theme.ts"
