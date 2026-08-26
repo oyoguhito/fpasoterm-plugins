@@ -23,7 +23,7 @@ cd fpasoterm-plugins
 npm ci
 npm run ports -- list
 npm run ports -- install terminal/welcome-banner
-fpasoterm --plugin-enable terminal/welcome-banner.ts
+fpasoterm --plugin-enable terminal/welcome-banner
 ```
 
 Use `--enable` to ask the installer to invoke the fpasoterm CLI after copying:
@@ -110,11 +110,19 @@ npm run ports -- compat all
 npm run ports -- compat appearance/teal
 ```
 
-Use `--fpasoterm <command>` when testing a specific binary or Windows wrapper:
+Use `--fpasoterm <command>` when testing a specific binary. On Windows prefer
+the release `fpasoterm.exe` directly rather than its `.cmd` wrapper:
 
 ```powershell
-npm run ports -- compat all --fpasoterm .\fpasoterm.cmd
+$fpasoterm = (Resolve-Path "..\pr53\src-tauri\target\release\fpasoterm.exe").Path
+npm run ports -- compat all --fpasoterm $fpasoterm
+npm run ports -- install productivity/plugin-search --fpasoterm $fpasoterm
 ```
+
+On Windows the ports CLI searches the current directory, `%APPDATA%\\npm`,
+`%USERPROFILE%\\.local\\bin`, and `Path` for `fpasoterm.cmd` or
+`fpasoterm.exe`. Use `--fpasoterm` with an explicit path when the application
+is not installed in one of those locations.
 
 `check` validates every manifest, plugin metadata header, source path, and API
 entry point without changing the user configuration. `compat` additionally
@@ -135,7 +143,7 @@ adding or changing a port, run:
 - `appearance`: runtime terminal palette samples: `amber`, `teal`, and
   `high-contrast`.
 - `integration`: reserved for documented local tool integrations.
-- `productivity`: local workflow helpers: `git-status` and `session-marker`.
+- `productivity`: local workflow helpers: `git-status`, `plugin-search`, and `session-marker`.
 
 Profiles are persistent fpasoterm configuration selected with `--profile`.
 Appearance ports instead change the terminal at runtime. Do not enable multiple
@@ -146,7 +154,7 @@ On a Windows source checkout, run the installer with Node and use the packaged
 
 ```powershell
 npm run ports -- install terminal/theme
-fpasoterm --plugin-enable terminal/theme.ts
+fpasoterm --plugin-enable terminal/theme
 ```
 
 See [Japanese documentation](README.ja.md), [port format](docs/ports.en.md),

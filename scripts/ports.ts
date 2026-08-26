@@ -184,7 +184,7 @@ function syncCheckout() {
   const result = childProcess.spawnSync('git', ['pull', '--ff-only'], {
     cwd: root,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    windowsHide: true,
   });
   if (result.error || result.status !== 0) {
     const detail = result.error?.message || `exit status ${result.status}`;
@@ -249,10 +249,59 @@ function printPorts(ports) {
   }
 }
 
+// Finds Windows command wrappers explicitly instead of relying on shell:true.
+function resolveWindowsCommand(command: string, environment = process.env): string {
+  if (path.extname(command) || command.includes('/') || command.includes('\\')) {
+    return command;
+  }
+  const pathEntries = [environment.Path, environment.PATH]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .flatMap((value) => value.split(';'));
+  const directories = [
+    process.cwd(),
+    environment.APPDATA && path.join(environment.APPDATA, 'npm'),
+    environment.USERPROFILE && path.join(environment.USERPROFILE, '.local', 'bin'),
+    ...pathEntries,
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map((value) => value.replace(/^"|"$/g, ''));
+  for (const extension of ['.cmd', '.exe', '.bat', '']) {
+    for (const directory of directories) {
+      const candidate = path.join(directory, `${command}${extension}`);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return command;
+}
+
+// Quotes one argv component for cmd.exe when a Windows .cmd/.bat wrapper is selected.
+function quoteWindowsCommandArgument(value: string): string {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+// Builds a shell-free child-process invocation for native executables and Windows wrappers.
+function fpasotermInvocation(command: string, args: string[], platform = process.platform, environment = process.env) {
+  const resolved = platform === 'win32' ? resolveWindowsCommand(command, environment) : command;
+  if (platform === 'win32' && /\.(?:cmd|bat)$/i.test(resolved)) {
+    // Release artifacts ship fpasoterm.cmd beside fpasoterm.exe. Prefer the
+    // native executable so cmd.exe does not reinterpret relative path arguments.
+    const nativeExecutable = resolved.replace(/\.(?:cmd|bat)$/i, '.exe');
+    if (fs.existsSync(nativeExecutable)) {
+      return { command: nativeExecutable, args };
+    }
+    const commandLine = [resolved, ...args].map(quoteWindowsCommandArgument).join(' ');
+    return {
+      command: environment.ComSpec || 'cmd.exe',
+      args: ['/d', '/s', '/c', commandLine],
+    };
+  }
+  return { command: resolved, args };
+}
+
 function runFpasoterm(command, args, failureMessage) {
-  const result = childProcess.spawnSync(command, args, {
+  const invocation = fpasotermInvocation(command, args);
+  const result = childProcess.spawnSync(invocation.command, invocation.args, {
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    windowsHide: true,
   });
   if (result.error || result.status !== 0) {
     throw new Error(failureMessage);
@@ -282,13 +331,17 @@ function parseFpasotermVersion(output) {
 
 // Reads the application version from an installed binary or fpasoterm.cmd wrapper.
 function readFpasotermVersion(command = 'fpasoterm') {
-  const result = childProcess.spawnSync(command, ['--version'], {
+  const invocation = fpasotermInvocation(command, ['--version']);
+  const result = childProcess.spawnSync(invocation.command, invocation.args, {
     encoding: 'utf8',
-    shell: process.platform === 'win32',
+    windowsHide: true,
   });
   if (result.error || result.status !== 0) {
     const detail = result.error?.message || result.stderr?.trim() || `exit status ${result.status}`;
-    throw new Error(`cannot run ${command} --version: ${detail}`);
+    const hint = process.platform === 'win32'
+      ? ' Specify the installed wrapper explicitly, for example: --fpasoterm C:\\path\\to\\fpasoterm.cmd'
+      : '';
+    throw new Error(`cannot run ${command} --version: ${detail}.${hint}`);
   }
   try {
     return parseFpasotermVersion(`${result.stdout}\n${result.stderr}`);
@@ -332,10 +385,15 @@ function copyPortSource(port, pluginDirectory, force) {
   return true;
 }
 
+// Uses fpasoterm's concise local selector form instead of exposing install-path extensions.
+function fpasotermPluginSelector(port) {
+  return port.installPath.replaceAll(path.sep, '/').replace(/\.(?:js|ts)$/, '');
+}
+
 // Copies a port source only when the target is new, unchanged, or --force is explicit.
 function installPort(port, pluginDirectory, enable, fpasotermCommand = 'fpasoterm', force = false) {
   copyPortSource(port, pluginDirectory, force);
-  const selector = port.installPath.replaceAll(path.sep, '/');
+  const selector = fpasotermPluginSelector(port);
   if (!enable) {
     console.log(`enable with: fpasoterm --plugin-enable ${selector}`);
     return;
@@ -374,7 +432,7 @@ function uninstallPort(port, pluginDirectory, disable, fpasotermCommand = 'fpaso
   }
   fs.unlinkSync(destination);
   console.log(`uninstalled ${port.id} from ${destination}`);
-  const selector = port.installPath.replaceAll(path.sep, '/');
+  const selector = fpasotermPluginSelector(port);
   if (!disable) {
     console.log(`disable with: fpasoterm --plugin-disable ${selector}`);
     return;
@@ -491,6 +549,7 @@ module.exports = {
   compareVersions,
   copyPortSource,
   discoverPorts,
+  fpasotermInvocation,
   portIndex,
   readPortIndex,
   normalizeIndexLineEndings,

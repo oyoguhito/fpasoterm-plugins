@@ -21,7 +21,7 @@ cd fpasoterm-plugins
 npm ci
 npm run ports -- list
 npm run ports -- install terminal/welcome-banner
-fpasoterm --plugin-enable terminal/welcome-banner.ts
+fpasoterm --plugin-enable terminal/welcome-banner
 ```
 
 `--enable` を追加すると、copy後に fpasoterm CLI を実行します。
@@ -101,11 +101,18 @@ npm run ports -- compat all
 npm run ports -- compat appearance/teal
 ```
 
-特定のbinaryまたはWindows wrapperを確認する場合は`--fpasoterm <command>`を指定します。
+特定のbinaryを確認する場合は`--fpasoterm <command>`を指定します。Windowsでは`.cmd`
+wrapperではなくreleaseの`fpasoterm.exe`を直接指定してください。
 
 ```powershell
-npm run ports -- compat all --fpasoterm .\fpasoterm.cmd
+$fpasoterm = (Resolve-Path "..\pr53\src-tauri\target\release\fpasoterm.exe").Path
+npm run ports -- compat all --fpasoterm $fpasoterm
+npm run ports -- install productivity/plugin-search --fpasoterm $fpasoterm
 ```
+
+Windowsではcurrent directory、`%APPDATA%\\npm`、`%USERPROFILE%\\.local\\bin`、
+`Path`から`fpasoterm.cmd`または`fpasoterm.exe`を検索します。これらにinstallされて
+いない場合は、`--fpasoterm`で明示的なpathを指定してください。
 
 `check` は全manifest、plugin metadata header、source path、API entry pointを確認し、
 User設定は変更しません。`compat` は追加で、実行できるfpasoterm本体のversionがportの
@@ -135,7 +142,7 @@ Windows の source checkout では Node からinstallerを実行し、packaged
 
 ```powershell
 npm run ports -- install terminal/theme
-fpasoterm --plugin-enable terminal/theme.ts
+fpasoterm --plugin-enable terminal/theme
 ```
 
 [port format](docs/ports.ja.md)、[plugin API](api/fpasoterm-plugin.d.ts)、

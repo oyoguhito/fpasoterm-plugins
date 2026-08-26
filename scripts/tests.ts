@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const portsApi = require('./ports');
 const ports = portsApi.discoverPorts();
-assert.equal(portsApi.readPortIndex().length, 9);
+assert.equal(portsApi.readPortIndex().length, 10);
 for (const identifier of [
   'appearance/amber',
   'terminal/hello',
@@ -16,6 +16,7 @@ for (const identifier of [
   'appearance/teal',
   'appearance/high-contrast',
   'productivity/git-status',
+  'productivity/plugin-search',
   'productivity/session-marker',
 ]) {
   assert.ok(ports.some((port) => port.id === identifier));
@@ -27,7 +28,7 @@ assert.deepEqual(
   portsApi.selectPorts('terminal/hello,terminal/welcome-banner').map((port) => port.id),
   ['terminal/hello', 'terminal/welcome-banner'],
 );
-assert.equal(portsApi.selectPorts('all', true).length, 9);
+assert.equal(portsApi.selectPorts('all', true).length, 10);
 assert.throws(() => portsApi.selectPorts('all,terminal/hello', true), /must be used alone/);
 portsApi.installPort(welcomeBanner, tempDirectory, false);
 assert.ok(fs.existsSync(path.join(tempDirectory, 'terminal', 'welcome-banner.ts')));
@@ -46,11 +47,24 @@ assert.equal(portsApi.searchPorts('banner').length, 2);
 assert.deepEqual(portsApi.searchPorts('session').map((port) => port.id), [
   'productivity/session-marker',
 ]);
-assert.deepEqual(portsApi.searchPorts('search'), []);
-assert.equal(portsApi.searchPorts('oyoguhito').length, 9);
+assert.deepEqual(portsApi.searchPorts('search').map((port) => port.id), ['productivity/plugin-search']);
+assert.equal(portsApi.searchPorts('oyoguhito').length, 10);
 assert.equal(portsApi.compareVersions('1.5.7', '1.5.5'), 2);
 assert.equal(portsApi.compareVersions('1.5.5', '1.5.5'), 0);
 assert.equal(portsApi.parseFpasotermVersion('fpasoterm 1.5.7 (commit abcdef)'), '1.5.7');
+const windowsCommandDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'fpasoterm-windows-command-'));
+fs.writeFileSync(path.join(windowsCommandDirectory, 'fpasoterm.cmd'), '@echo off\r\n');
+fs.writeFileSync(path.join(windowsCommandDirectory, 'fpasoterm.exe'), 'test executable');
+assert.deepEqual(
+  portsApi.fpasotermInvocation('fpasoterm', ['--version'], 'win32', {
+    PATH: windowsCommandDirectory,
+    ComSpec: 'cmd-test.exe',
+  }),
+  {
+    command: path.join(windowsCommandDirectory, 'fpasoterm.exe'),
+    args: ['--version'],
+  },
+);
 assert.throws(
   () => portsApi.assertCompatible(welcomeBanner, '1.5.4'),
   /requires fpasoterm >= 1.5.5/,
@@ -84,7 +98,7 @@ assert.throws(
 );
 
 ports.forEach(portsApi.validatePort);
-assert.equal(ports.length, 9);
+assert.equal(ports.length, 10);
 assert.doesNotThrow(() => portsApi.assertPortIndexCurrent());
 assert.equal(portsApi.normalizeIndexLineEndings('one\r\ntwo\rthree\n'), 'one\ntwo\nthree\n');
 assert.equal(typeof portsApi.syncCheckout, 'function');

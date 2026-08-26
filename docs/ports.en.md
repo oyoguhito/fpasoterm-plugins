@@ -53,6 +53,11 @@ source file. Add `--enable` to install or
 update, or `--disable` to uninstall, when the local `fpasoterm` command is
 available.
 
+When the ports CLI prints or invokes fpasoterm enable/disable commands, it uses
+the concise local selector form such as `productivity/plugin-search`. The
+leading `plugins/` and `.ts`/`.js` suffix are optional in fpasoterm unless the
+selector would be ambiguous.
+
 These are intentionally local operations. Updating the repository itself is a
 separate Git operation, so users can review source changes before installing
 them.
@@ -70,5 +75,5 @@ declared plugin version, and use of `window.fpasotermPluginApi`. It does not
 write outside this checkout. `npm run ports -- compat [port|all]` runs the
 installed `fpasoterm --version` command and compares it to each port's
 `minFpasotermVersion`. Install and update run the same compatibility check
-before copying. Use `--fpasoterm <command>` to check another binary or a
-Windows `fpasoterm.cmd` wrapper.
+before copying. Use `--fpasoterm <command>` to check another binary. On Windows
+prefer a release `fpasoterm.exe` path over the `.cmd` wrapper.

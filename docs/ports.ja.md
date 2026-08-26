@@ -46,6 +46,8 @@ source fileだけを削除します。
 localの`fpasoterm` commandを利用できる場合、installまたはupdateでは`--enable`、
 uninstallでは`--disable`を追加できます。
 
+ports CLI が表示・実行する fpasoterm のenable/disable commandでは、`productivity/plugin-search` のような短いlocal selectorを使用します。fpasotermでは、selectorが曖昧でない場合に`plugins/` prefixと`.ts`/`.js` suffixを省略できます。
+
 これらは意図的にlocal操作だけです。repositoryの更新は別途Gitで行うため、利用者は
 source変更を確認してからinstallできます。
 
@@ -57,5 +59,5 @@ source変更を確認してからinstallできます。
 `window.fpasotermPluginApi`の使用を確認します。このcheckout外への書き込みは行いません。
 `npm run ports -- compat [port|all]` はinstall済みの`fpasoterm --version`を実行し、
 各portの`minFpasotermVersion`と比較します。installとupdateもcopy前に同じ互換性確認を
-行います。別binaryまたはWindowsの`fpasoterm.cmd` wrapperを確認する場合は、
-`--fpasoterm <command>`を使用します。
+行います。別binaryを確認する場合は`--fpasoterm <command>`を使用します。Windowsでは
+`.cmd` wrapperよりreleaseの`fpasoterm.exe`を直接指定してください。
