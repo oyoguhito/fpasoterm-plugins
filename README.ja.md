@@ -1,6 +1,6 @@
 # fpasoterm-plugins
 
-fpasoterm 用 plugin を Ports 形式で管理する repository です。
+fpasoterm 用 plugin を Ports 形式で管理する repository です。このrepositoryはcatalog / `INDEX`検索、port開発、検証用です。利用者はreview済みlocal portまたは信頼済みlocal fileをfpasoterm本体CLIからinstallします。
 
 各 port は `ports/<category>/<name>/` 配下で完結します。
 
@@ -20,15 +20,11 @@ git clone https://github.com/oyoguhito/fpasoterm-plugins.git
 cd fpasoterm-plugins
 npm ci
 npm run ports -- list
-npm run ports -- install terminal/welcome-banner
-fpasoterm --plugin-enable terminal/welcome-banner
+fpasoterm --plugin-install terminal/welcome-banner \
+  --plugin-ports-dir . --enable
 ```
 
-`--enable` を追加すると、copy後に fpasoterm CLI を実行します。
-
-```sh
-npm run ports -- install terminal/status-banner --enable
-```
+`npm run ports -- ...`はport authorがlocal検索、`INDEX`生成・検証、port recipeのテストに使うため残します。利用者向けの主なinstallerではありません。
 
 ## fpasoterm からの直接install
 
@@ -39,7 +35,7 @@ fpasoterm --plugin-install appearance/teal
 fpasoterm --plugin-install appearance/teal --enable
 ```
 
-最初のcommandは選択したsourceだけをreview用に`User/plugins`へ保存します。`--enable`は明示指定が必要で、既存plugin fileを置き換えるには`--plugin-install-force`が必要です。installerはこの公式repositoryだけから取得し、manifest、相対path、source size、version、plugin API headerを検証してからfileを書き込みます。
+最初のcommandは選択したsourceだけをreview用に`User/plugins`へ保存します。`--enable`は明示指定が必要で、既存plugin fileを置き換えるには`--force`が必要です。installerはこの公式repositoryだけから取得し、manifest、相対path、source size、version、plugin API headerを検証してからfileを書き込みます。
 
 ## GitHub Sync
 
@@ -55,7 +51,7 @@ localでの利用フローはPorts treeと同様です。
     npm run ports -- search banner
     npm run ports -- install terminal/welcome-banner --enable
 
-searchはlocal INDEXを検索します。installは選択したlocal port recipeだけを読み、review済みsourceをfpasotermのUser/plugins directoryへcopyします。
+searchはlocal INDEXを検索します。installはport authorの開発test用として残します。通常は`fpasoterm --plugin-install <id> --plugin-ports-dir .`を使用し、copy、上書き、enableはfpasoterm本体に任せます。
 
 ## Port Command
 

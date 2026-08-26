@@ -36,7 +36,7 @@ codeをdownloadするdependencyは含めません。
 GitHubからの更新とinstallは意図的に分離します。repository checkoutで
 npm run ports -- syncを実行するとgit pull --ff-onlyとINDEX検証を行います。このcommandはpluginをcopy、enable、実行しません。明示的なinstallまたはupdateの前にdiffをreviewしてください。
 
-## Local Port 操作
+## 開発用Port操作
 
 `npm run ports -- search <query>` はportのID、name、descriptionを検索します。
 `install` は選択したsourceをUser plugin directoryへcopyします。`update <id>` は
@@ -48,10 +48,9 @@ uninstallでは`--disable`を追加できます。
 
 ports CLI が表示・実行する fpasoterm のenable/disable commandでは、`productivity/plugin-search` のような短いlocal selectorを使用します。fpasotermでは、selectorが曖昧でない場合に`plugins/` prefixと`.ts`/`.js` suffixを省略できます。
 
-これらは意図的にlocal操作だけです。repositoryの更新は別途Gitで行うため、利用者は
-source変更を確認してからinstallできます。
+これらのcommandはport authorによる開発・検証用として残します。利用者はreview済みcheckoutを`fpasoterm --plugin-install <id> --plugin-ports-dir <checkout>`で、信頼済み単独sourceを`fpasoterm --plugin-install-file <path>`でinstallしてください。repositoryの更新は別途Gitで行うため、利用者はsource変更を確認してからinstallできます。
 
-新しいfpasoterm releaseでは、`fpasoterm --plugin-install <id>`で固定の公式repositoryから1件だけを直接取得する方法も利用できます。この方法はcheckoutやNode.jsを必要とせず、`--plugin-install-force`を明示しない限り既存fileを置き換えません。tree全体のreviewやcontributionには、このports CLIを使用します。
+新しいfpasoterm releaseでは、`fpasoterm --plugin-install <id>`で固定の公式repositoryから1件だけを直接取得する方法も利用できます。この方法はcheckoutやNode.jsを必要とせず、`--force`を明示しない限り既存fileを置き換えません。tree全体のreviewやcontributionには、このports CLIを使用します。
 
 ## 検証と互換性
 

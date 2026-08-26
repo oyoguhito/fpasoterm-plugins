@@ -42,7 +42,7 @@ npm run ports -- sync from the repository checkout to execute git pull
 --ff-only and validate INDEX. The command does not copy, enable, or execute a
 plugin. Review the diff before running an explicit install or update command.
 
-## Local Port Operations
+## Development Port Operations
 
 `npm run ports -- search <query>` searches port IDs, names, and
 descriptions. `install` copies the selected source into the user plugin
@@ -58,14 +58,17 @@ the concise local selector form such as `productivity/plugin-search`. The
 leading `plugins/` and `.ts`/`.js` suffix are optional in fpasoterm unless the
 selector would be ambiguous.
 
-These are intentionally local operations. Updating the repository itself is a
-separate Git operation, so users can review source changes before installing
-them.
+These commands are retained for port-author development and validation. End
+users should install a reviewed checkout with
+`fpasoterm --plugin-install <id> --plugin-ports-dir <checkout>` or a
+trusted standalone source with `fpasoterm --plugin-install-file <path>`.
+Updating the repository itself is a separate Git operation, so users can review
+source changes before installing them.
 
 Recent fpasoterm releases also support `fpasoterm --plugin-install <id>` for a
 single-port direct download from the fixed official repository. That path does
 not require this checkout or Node.js; it preserves existing files unless
-`--plugin-install-force` is explicit. Use this ports CLI when reviewing or
+`--force` is explicit. Use this ports CLI when reviewing or
 contributing the full local tree.
 
 ## Validation And Compatibility

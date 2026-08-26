@@ -1,6 +1,8 @@
 # fpasoterm-plugins
 
-Community-maintained fpasoterm plugins in a ports-style layout.
+Community-maintained fpasoterm plugins in a ports-style layout. This repository
+is for catalog/`INDEX` search, port development, and validation. End users use
+the fpasoterm CLI to install a reviewed local port or a trusted local file.
 
 Each port is self-contained under `ports/<category>/<name>/`:
 
@@ -22,15 +24,13 @@ git clone https://github.com/oyoguhito/fpasoterm-plugins.git
 cd fpasoterm-plugins
 npm ci
 npm run ports -- list
-npm run ports -- install terminal/welcome-banner
-fpasoterm --plugin-enable terminal/welcome-banner
+fpasoterm --plugin-install terminal/welcome-banner \
+  --plugin-ports-dir . --enable
 ```
 
-Use `--enable` to ask the installer to invoke the fpasoterm CLI after copying:
-
-```sh
-npm run ports -- install terminal/status-banner --enable
-```
+`npm run ports -- ...` remains available for port authors to search, generate
+and validate `INDEX`, and test port recipes. It is not the primary end-user
+installer.
 
 ## Direct Install From fpasoterm
 
@@ -43,7 +43,7 @@ fpasoterm --plugin-install appearance/teal --enable
 ```
 
 The first command writes only the selected source below `User/plugins` for
-review. `--enable` is explicit, and `--plugin-install-force` is required to
+review. `--enable` is explicit, and `--force` is required to
 replace an existing plugin file. The installer fetches only from this official
 repository and validates the manifest, relative paths, source size, version,
 and plugin API header before writing the file.
@@ -66,7 +66,9 @@ The local workflow is equivalent to a ports tree:
     npm run ports -- install terminal/welcome-banner --enable
 
 Search reads the local INDEX. Install reads only the selected local port recipe
-and copies its reviewed source into the fpasoterm User/plugins directory.
+and is retained for port-author development tests. For normal use, run
+`fpasoterm --plugin-install <id> --plugin-ports-dir .` so fpasoterm owns
+the copy, overwrite, and enable operation.
 
 ## Port Commands
 
