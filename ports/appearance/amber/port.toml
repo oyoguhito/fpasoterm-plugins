@@ -1,0 +1,10 @@
+[port]
+id = "appearance/amber"
+name = "amber"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Applies an amber-on-charcoal terminal palette for a warm high-contrast appearance."
+license = "MIT"
+minFpasotermVersion = "1.5.5"
+source = "plugin.ts"
+installPath = "appearance/amber.ts"

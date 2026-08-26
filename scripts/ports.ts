@@ -7,12 +7,18 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const portsRoot = path.join(root, 'ports');
+const indexPath = path.join(root, 'INDEX');
+
+type Port = Record<string, string> & {
+  directory: string;
+  manifestPath: string;
+};
 
 // Reads the small, intentionally restricted TOML metadata format used by a port.
-function readPort(portDirectory) {
+function readPort(portDirectory: string): Port {
   const manifestPath = path.join(portDirectory, 'port.toml');
   const text = fs.readFileSync(manifestPath, 'utf8');
-  const values = {};
+  const values: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
     const match = line.match(/^([A-Za-z][A-Za-z0-9]*)\s*=\s*"([^"]*)"\s*$/);
     if (match) {
@@ -23,8 +29,8 @@ function readPort(portDirectory) {
 }
 
 // Finds every checked-in port manifest below the ports root.
-function discoverPorts(directory = portsRoot) {
-  const ports = [];
+function discoverPorts(directory: string = portsRoot): Port[] {
+  const ports: Port[] = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
@@ -37,7 +43,7 @@ function discoverPorts(directory = portsRoot) {
 }
 
 // Rejects malformed port metadata before copy or enable operations use it.
-function validatePort(port) {
+function validatePort(port: Port): void {
   const relativeDirectory = path.relative(portsRoot, port.directory).replaceAll(path.sep, '/');
   if (!port.id || port.id !== relativeDirectory) {
     throw new Error(`${port.manifestPath}: id must match ${relativeDirectory}`);
@@ -82,14 +88,110 @@ function defaultPluginDirectory() {
 
 function printUsage() {
   console.log(`Usage:
-  node scripts/ports.js list
-  node scripts/ports.js search <query>
-  node scripts/ports.js check
-  node scripts/ports.js compat [category/name[,category/name...]|all] [--fpasoterm <command>]
-  node scripts/ports.js install <category/name[,category/name...]> [--force] [--enable] [--plugin-dir <path>] [--fpasoterm <command>]
-  node scripts/ports.js update <category/name[,category/name...]|all> [--force] [--enable] [--plugin-dir <path>] [--fpasoterm <command>]
-  node scripts/ports.js uninstall <category/name[,category/name...]> [--disable] [--plugin-dir <path>] [--fpasoterm <command>]
+  npm run ports -- list
+  npm run ports -- index [--check]
+  npm run ports -- sync
+  npm run ports -- search <query>
+  npm run ports -- check
+  npm run ports -- compat [category/name[,category/name...]|all] [--fpasoterm <command>]
+  npm run ports -- install <category/name[,category/name...]> [--force] [--enable] [--plugin-dir <path>] [--fpasoterm <command>]
+  npm run ports -- update <category/name[,category/name...]|all> [--force] [--enable] [--plugin-dir <path>] [--fpasoterm <command>]
+  npm run ports -- uninstall <category/name[,category/name...]> [--disable] [--plugin-dir <path>] [--fpasoterm <command>]
 `);
+}
+
+// Produces the public, portable metadata catalog consumed by tools and reviewers.
+function portIndex() {
+  return discoverPorts().map((port) => {
+    validatePort(port);
+    const fields = [
+      port.id,
+      port.name,
+      port.version,
+      port.author,
+      port.description,
+      port.license,
+      port.minFpasotermVersion,
+      port.installPath,
+    ];
+    if (fields.some((value) => /[|\r\n]/.test(value))) {
+      throw new Error(`${port.manifestPath}: INDEX fields must not contain | or line breaks`);
+    }
+    return {
+      id: port.id,
+      name: port.name,
+      version: port.version,
+      author: port.author,
+      description: port.description,
+      license: port.license,
+      minFpasotermVersion: port.minFpasotermVersion,
+      installPath: port.installPath,
+    };
+  });
+}
+
+// Uses a BSD Ports-style line-oriented format to keep the catalog compact.
+function serializedPortIndex() {
+  return portIndex().map((port) => [
+    port.id,
+    port.name,
+    port.version,
+    port.author,
+    port.description,
+    port.license,
+    port.minFpasotermVersion,
+    port.installPath,
+  ].join('|')).join('\n') + '\n';
+}
+
+// Reads the compact local catalog that `sync` and `index` have already validated.
+function readPortIndex() {
+  if (!fs.existsSync(indexPath)) {
+    throw new Error('INDEX does not exist; run: npm run ports -- sync');
+  }
+  return fs.readFileSync(indexPath, 'utf8').split(/\r?\n/).filter(Boolean).map((line, number) => {
+    const fields = line.split('|');
+    if (fields.length !== 8 || fields.some((field) => !field)) {
+      throw new Error(`${indexPath}:${number + 1}: malformed INDEX record`);
+    }
+    const [id, name, version, author, description, license, minFpasotermVersion, installPath] = fields;
+    return { id, name, version, author, description, license, minFpasotermVersion, installPath };
+  });
+}
+
+// Writes the checked-in catalog after all manifests have passed validation.
+function writePortIndex() {
+  fs.writeFileSync(indexPath, serializedPortIndex());
+  console.log(`wrote ${indexPath}`);
+}
+
+// Git may check INDEX out with CRLF on Windows even though generation uses LF.
+function normalizeIndexLineEndings(text) {
+  return text.replace(/\r\n?/g, '\n');
+}
+
+// Rejects a stale checked-in catalog in CI before contributors publish a port change.
+function assertPortIndexCurrent() {
+  if (!fs.existsSync(indexPath)
+    || normalizeIndexLineEndings(fs.readFileSync(indexPath, 'utf8')) !== serializedPortIndex()) {
+    throw new Error('INDEX is stale; run: npm run ports -- index');
+  }
+  console.log(`INDEX contains ${portIndex().length} ports`);
+}
+
+// Updates only the current Git checkout; plugin files are never copied or run here.
+function syncCheckout() {
+  const result = childProcess.spawnSync('git', ['pull', '--ff-only'], {
+    cwd: root,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
+  if (result.error || result.status !== 0) {
+    const detail = result.error?.message || `exit status ${result.status}`;
+    throw new Error(`could not sync the Git checkout: ${detail}`);
+  }
+  assertPortIndexCurrent();
+  console.log('synced checkout; review changes, then install or update selected ports');
 }
 
 function selectPort(id) {
@@ -123,11 +225,21 @@ function listPorts() {
   }
 }
 
-// Finds ports by ID, display name, public author, or one-line description without downloading data.
+// Searches the generated local INDEX, then returns the matching local port recipes.
 function searchPorts(query) {
+  assertPortIndexCurrent();
   const needle = query.toLocaleLowerCase();
-  return discoverPorts().filter((port) => [port.id, port.name, port.author, port.description]
-    .some((value) => value.toLocaleLowerCase().includes(needle)));
+  const localPorts = new Map(discoverPorts().map((port) => [port.id, port]));
+  return readPortIndex()
+    .filter((port) => [port.id, port.name, port.author, port.description]
+      .some((value) => value.toLocaleLowerCase().includes(needle)))
+    .map((entry) => {
+      const port = localPorts.get(entry.id);
+      if (!port) {
+        throw new Error(`INDEX references a missing local port: ${entry.id}`);
+      }
+      return port;
+    });
 }
 
 function printPorts(ports) {
@@ -302,6 +414,17 @@ function main() {
   const rest = optionOnlyCommand ? [firstArgument, ...remaining] : remaining;
   if (command === 'list') {
     listPorts();
+  } else if (command === 'sync' && !firstArgument) {
+    syncCheckout();
+  } else if (command === 'index') {
+    if (firstArgument && firstArgument !== '--check') {
+      throw new Error('index accepts only --check');
+    }
+    if (firstArgument === '--check') {
+      assertPortIndexCurrent();
+    } else {
+      writePortIndex();
+    }
   } else if (command === 'search' && identifier) {
     const matches = searchPorts(identifier);
     printPorts(matches);
@@ -368,6 +491,12 @@ module.exports = {
   compareVersions,
   copyPortSource,
   discoverPorts,
+  portIndex,
+  readPortIndex,
+  normalizeIndexLineEndings,
+  serializedPortIndex,
+  assertPortIndexCurrent,
+  syncCheckout,
   installPort,
   isInstalled,
   printPorts,

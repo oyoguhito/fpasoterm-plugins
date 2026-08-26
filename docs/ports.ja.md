@@ -29,9 +29,16 @@ portを追加する前に`npm run check`を実行します。公開可能なsour
 documentationだけを含め、credential、個人path、generated cache、install時に
 codeをdownloadするdependencyは含めません。
 
+## INDEX
+
+`INDEX` は全`port.toml`から生成するcommit対象の公開catalogです。plugin sourceを読まなくてもport metadataを一覧できます。port metadataを変更した後は`npm run ports -- index`を実行してください。CIと`npm run check`は`npm run ports -- index --check`で古いINDEXを検出します。
+
+GitHubからの更新とinstallは意図的に分離します。repository checkoutで
+npm run ports -- syncを実行するとgit pull --ff-onlyとINDEX検証を行います。このcommandはpluginをcopy、enable、実行しません。明示的なinstallまたはupdateの前にdiffをreviewしてください。
+
 ## Local Port 操作
 
-`node scripts/ports.js search <query>` はportのID、name、descriptionを検索します。
+`npm run ports -- search <query>` はportのID、name、descriptionを検索します。
 `install` は選択したsourceをUser plugin directoryへcopyします。`update <id>` は
 そのcopy済みsourceを現在のcheckoutにあるsourceで置き換えます。`update all` は導入済みの
 全portを同様に処理し、新しいportは導入しません。`uninstall <id>` は対象portがinstallした
@@ -42,21 +49,13 @@ uninstallでは`--disable`を追加できます。
 これらは意図的にlocal操作だけです。repositoryの更新は別途Gitで行うため、利用者は
 source変更を確認してからinstallできます。
 
-installとupdateは内容が異なる既存fileを保持します。置き換える場合だけ、sourceを確認して
-`--force`を指定してください。fpasoterm CLIは1件に解決できる場合のみbasenameを受け付けます。
-portsはcategory pathへ導入するため、`terminal/welcome-banner.ts`のように曖昧でないselectorで
-有効化できます。
-
-`install`、`update`、`uninstall`、`compat` はcomma区切りの複数port IDを受け付けます。
-例: `node scripts/ports.js install terminal/hello,terminal/theme`。`update all`は導入済みの
-全portを更新します。commandはfile変更前に選択した全portを検証するため、要求したportの一部が
-存在しない場合に部分更新しません。
+新しいfpasoterm releaseでは、`fpasoterm --plugin-install <id>`で固定の公式repositoryから1件だけを直接取得する方法も利用できます。この方法はcheckoutやNode.jsを必要とせず、`--plugin-install-force`を明示しない限り既存fileを置き換えません。tree全体のreviewやcontributionには、このports CLIを使用します。
 
 ## 検証と互換性
 
-`node scripts/ports.js check` は全portのmanifest、source file、宣言plugin version、
+`npm run ports -- check` は全portのmanifest、source file、宣言plugin version、
 `window.fpasotermPluginApi`の使用を確認します。このcheckout外への書き込みは行いません。
-`node scripts/ports.js compat [port|all]` はinstall済みの`fpasoterm --version`を実行し、
+`npm run ports -- compat [port|all]` はinstall済みの`fpasoterm --version`を実行し、
 各portの`minFpasotermVersion`と比較します。installとupdateもcopy前に同じ互換性確認を
 行います。別binaryまたはWindowsの`fpasoterm.cmd` wrapperを確認する場合は、
 `--fpasoterm <command>`を使用します。

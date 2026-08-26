@@ -4,7 +4,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..', '..');
 const ignoredDirectories = new Set(['.git', '.jj', 'node_modules']);
 const ignoredFiles = new Set(['package-lock.json']);
-const patterns = [
+const patterns: Array<[string, RegExp]> = [
   ['AWS access key', /AKIA[0-9A-Z]{16}/],
   ['GitHub token', /gh[pousr]_[A-Za-z0-9_]{36,}/],
   ['npm token', /npm_[A-Za-z0-9]{36,}/],

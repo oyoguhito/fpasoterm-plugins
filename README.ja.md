@@ -18,16 +18,44 @@ plugin は `~/.config/fpasoterm/User/plugins/` へcopyし、既存の fpasoterm 
 ```sh
 git clone https://github.com/oyoguhito/fpasoterm-plugins.git
 cd fpasoterm-plugins
-node scripts/ports.js list
-node scripts/ports.js install terminal/welcome-banner
+npm ci
+npm run ports -- list
+npm run ports -- install terminal/welcome-banner
 fpasoterm --plugin-enable terminal/welcome-banner.ts
 ```
 
 `--enable` を追加すると、copy後に fpasoterm CLI を実行します。
 
 ```sh
-node scripts/ports.js install terminal/status-banner --enable
+npm run ports -- install terminal/status-banner --enable
 ```
+
+## fpasoterm からの直接install
+
+現在のfpasoterm releaseでは、ports checkout全体やNode.jsを使わずに、指定した公開portだけを導入できます。
+
+```sh
+fpasoterm --plugin-install appearance/teal
+fpasoterm --plugin-install appearance/teal --enable
+```
+
+最初のcommandは選択したsourceだけをreview用に`User/plugins`へ保存します。`--enable`は明示指定が必要で、既存plugin fileを置き換えるには`--plugin-install-force`が必要です。installerはこの公式repositoryだけから取得し、manifest、相対path、source size、version、plugin API headerを検証してからfileを書き込みます。
+
+## GitHub Sync
+
+GitHub上の現在のcheckoutから新しいport metadataとsourceを取得する場合は、次を実行します。
+
+    npm run ports -- sync
+
+このcommandはgit pull --ff-onlyとINDEX検証だけを行います。plugin sourceのcopy、enable、実行はしません。Git diffをreviewしてから、必要なportだけを明示的にinstallまたはupdateしてください。
+
+localでの利用フローはPorts treeと同様です。
+
+    npm run ports -- sync
+    npm run ports -- search banner
+    npm run ports -- install terminal/welcome-banner --enable
+
+searchはlocal INDEXを検索します。installは選択したlocal port recipeだけを読み、review済みsourceをfpasotermのUser/plugins directoryへcopyします。
 
 ## Port Command
 
@@ -36,19 +64,19 @@ networkからのdownloadやremote codeの実行は行いません。
 
 ```sh
 # ID、name、公開author、descriptionを検索する
-node scripts/ports.js search banner
+npm run ports -- search banner
 
 # このcheckoutのsourceで導入済みの1件、または全portを再copyする
-node scripts/ports.js update terminal/welcome-banner --force
-node scripts/ports.js update all --force
+npm run ports -- update terminal/welcome-banner --force
+npm run ports -- update all --force
 
 # copy済みpluginを削除する。--disableでfpasotermの設定も解除する
-node scripts/ports.js uninstall terminal/welcome-banner --disable
+npm run ports -- uninstall terminal/welcome-banner --disable
 
 # comma区切りで複数portをinstall、update、uninstallする
-node scripts/ports.js install terminal/hello,terminal/welcome-banner
-node scripts/ports.js update appearance/teal,appearance/high-contrast --force
-node scripts/ports.js uninstall terminal/hello,terminal/welcome-banner --disable
+npm run ports -- install terminal/hello,terminal/welcome-banner
+npm run ports -- update appearance/teal,appearance/high-contrast --force
+npm run ports -- uninstall terminal/hello,terminal/welcome-banner --disable
 ```
 
 `install`、`update`、`uninstall` にはすべて `--plugin-dir <path>` を
@@ -68,28 +96,35 @@ category pathへ導入するため曖昧になりません。
 使用します。
 
 ```sh
-node scripts/ports.js check
-node scripts/ports.js compat all
-node scripts/ports.js compat appearance/teal
+npm run ports -- check
+npm run ports -- compat all
+npm run ports -- compat appearance/teal
 ```
 
 特定のbinaryまたはWindows wrapperを確認する場合は`--fpasoterm <command>`を指定します。
 
 ```powershell
-node .\scripts\ports.js compat all --fpasoterm .\fpasoterm.cmd
+npm run ports -- compat all --fpasoterm .\fpasoterm.cmd
 ```
 
 `check` は全manifest、plugin metadata header、source path、API entry pointを確認し、
 User設定は変更しません。`compat` は追加で、実行できるfpasoterm本体のversionがportの
 必要versionを満たすか確認します。
 
+## INDEXの保守
+
+INDEXは全port.tomlから生成する公開検索catalogです。portを追加・変更した場合は次を実行します。
+
+    npm run ports -- index
+    npm run check
+
 ## Category
 
 - `terminal`: fpasotermの公開exampleである`hello`、`welcome-banner`、
   `status-banner`、`theme`。
-- `appearance`: `teal`、`high-contrast`など、runtime terminal paletteのsample。
+- `appearance`: `amber`、`teal`、`high-contrast`など、runtime terminal paletteのsample。
 - `integration`: local tool integration用の予約category。
-- `productivity`: local workflow helper用の予約category。
+- `productivity`: `git-status`、`session-marker`などのlocal workflow helper。
 
 profileは`--profile`で選択する永続的なfpasoterm設定です。appearance portはruntimeで
 terminalを変更します。複数のtheme portを有効にする場合は、読み込み順と上書きを意図して
@@ -99,7 +134,7 @@ Windows の source checkout では Node からinstallerを実行し、packaged
 `fpasoterm.cmd` または install済みの `fpasoterm` command でenableします。
 
 ```powershell
-node .\scripts\ports.js install terminal/theme
+npm run ports -- install terminal/theme
 fpasoterm --plugin-enable terminal/theme.ts
 ```
 

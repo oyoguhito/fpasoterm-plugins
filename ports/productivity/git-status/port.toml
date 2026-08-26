@@ -1,0 +1,10 @@
+[port]
+id = "productivity/git-status"
+name = "git-status"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Adds a Plugins menu action that inserts git status --short without executing it."
+license = "MIT"
+minFpasotermVersion = "1.5.5"
+source = "plugin.ts"
+installPath = "productivity/git-status.ts"

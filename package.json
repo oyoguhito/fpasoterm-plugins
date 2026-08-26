@@ -5,15 +5,21 @@
   "description": "Ports-style community plugins for fpasoterm.",
   "license": "MIT",
   "scripts": {
+    "build": "tsc --project tsconfig.json",
     "check": "npm run check:syntax && npm test",
-    "check:syntax": "node --check scripts/ports.js && node --check scripts/tests.js && node --check scripts/security/scan-secrets.js",
-    "test": "node scripts/tests.js",
-    "scan:secrets": "node scripts/security/scan-secrets.js",
+    "check:syntax": "tsc --noEmit --project tsconfig.json",
+    "test": "npm run build --silent && node dist/tests.js",
+    "scan:secrets": "npm run build --silent && node dist/security/scan-secrets.js",
     "audit:prod": "npm audit --omit=dev",
     "security": "npm run scan:secrets && npm run audit:prod",
-    "ports": "node scripts/ports.js"
+    "ports": "npm run build --silent && node dist/ports.js",
+    "index": "npm run ports -- index --check"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "typescript": "^7.0.2"
   }
 }

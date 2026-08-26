@@ -20,16 +20,53 @@ Install only plugins you have reviewed and trust.
 ```sh
 git clone https://github.com/oyoguhito/fpasoterm-plugins.git
 cd fpasoterm-plugins
-node scripts/ports.js list
-node scripts/ports.js install terminal/welcome-banner
+npm ci
+npm run ports -- list
+npm run ports -- install terminal/welcome-banner
 fpasoterm --plugin-enable terminal/welcome-banner.ts
 ```
 
 Use `--enable` to ask the installer to invoke the fpasoterm CLI after copying:
 
 ```sh
-node scripts/ports.js install terminal/status-banner --enable
+npm run ports -- install terminal/status-banner --enable
 ```
+
+## Direct Install From fpasoterm
+
+Current fpasoterm releases can install one selected public port without a full
+checkout or Node.js:
+
+```sh
+fpasoterm --plugin-install appearance/teal
+fpasoterm --plugin-install appearance/teal --enable
+```
+
+The first command writes only the selected source below `User/plugins` for
+review. `--enable` is explicit, and `--plugin-install-force` is required to
+replace an existing plugin file. The installer fetches only from this official
+repository and validates the manifest, relative paths, source size, version,
+and plugin API header before writing the file.
+
+## GitHub Sync
+
+Run the following from this Git checkout to retrieve the latest port metadata
+and source:
+
+    npm run ports -- sync
+
+The command runs git pull --ff-only and validates INDEX. It does not copy,
+enable, or execute plugin source. Review the Git diff, then install or update
+selected ports explicitly.
+
+The local workflow is equivalent to a ports tree:
+
+    npm run ports -- sync
+    npm run ports -- search banner
+    npm run ports -- install terminal/welcome-banner --enable
+
+Search reads the local INDEX. Install reads only the selected local port recipe
+and copies its reviewed source into the fpasoterm User/plugins directory.
 
 ## Port Commands
 
@@ -38,25 +75,22 @@ directory. They do not download or execute remote code.
 
 ```sh
 # Search IDs, names, public authors, and descriptions.
-node scripts/ports.js search banner
+npm run ports -- search banner
 
 # Refresh one installed plugin from this checkout, or every installed port.
-node scripts/ports.js update terminal/welcome-banner --force
-node scripts/ports.js update all --force
+npm run ports -- update terminal/welcome-banner --force
+npm run ports -- update all --force
 
 # Remove the copied plugin. Add --disable to also update fpasoterm config.
-node scripts/ports.js uninstall terminal/welcome-banner --disable
+npm run ports -- uninstall terminal/welcome-banner --disable
 
 # Install, update, or remove multiple ports with comma-separated IDs.
-node scripts/ports.js install terminal/hello,terminal/welcome-banner
-node scripts/ports.js update appearance/teal,appearance/high-contrast --force
-node scripts/ports.js uninstall terminal/hello,terminal/welcome-banner --disable
+npm run ports -- install terminal/hello,terminal/welcome-banner
+npm run ports -- update appearance/teal,appearance/high-contrast --force
+npm run ports -- uninstall terminal/hello,terminal/welcome-banner --disable
 ```
 
 Every install, update, and uninstall command accepts `--plugin-dir <path>`.
-`update` is a local recopy operation, not a network package update; it never
-installs a new port. Restart fpasoterm after changing plugin files or enabled
-state.
 
 Existing plugin files are protected. `install` and `update` do not replace a
 different file unless `--force` is explicit. An identical file is reported as
@@ -71,29 +105,37 @@ basename while no duplicate exists; ports install category paths such as
 file is copied. Run it explicitly before changing ports:
 
 ```sh
-node scripts/ports.js check
-node scripts/ports.js compat all
-node scripts/ports.js compat appearance/teal
+npm run ports -- check
+npm run ports -- compat all
+npm run ports -- compat appearance/teal
 ```
 
 Use `--fpasoterm <command>` when testing a specific binary or Windows wrapper:
 
 ```powershell
-node .\scripts\ports.js compat all --fpasoterm .\fpasoterm.cmd
+npm run ports -- compat all --fpasoterm .\fpasoterm.cmd
 ```
 
 `check` validates every manifest, plugin metadata header, source path, and API
 entry point without changing the user configuration. `compat` additionally
 checks the installed application's version against each port requirement.
 
+## Maintaining INDEX
+
+INDEX is generated from every port.toml and is the public search catalog. When
+adding or changing a port, run:
+
+    npm run ports -- index
+    npm run check
+
 ## Categories
 
 - `terminal`: fpasoterm's public `hello`, `welcome-banner`, `status-banner`,
   and `theme` examples.
-- `appearance`: runtime terminal palette samples, including `teal` and
+- `appearance`: runtime terminal palette samples: `amber`, `teal`, and
   `high-contrast`.
 - `integration`: reserved for documented local tool integrations.
-- `productivity`: reserved for local workflow helpers.
+- `productivity`: local workflow helpers: `git-status` and `session-marker`.
 
 Profiles are persistent fpasoterm configuration selected with `--profile`.
 Appearance ports instead change the terminal at runtime. Do not enable multiple
@@ -103,7 +145,7 @@ On a Windows source checkout, run the installer with Node and use the packaged
 `fpasoterm.cmd` wrapper or installed `fpasoterm` command for enablement:
 
 ```powershell
-node .\scripts\ports.js install terminal/theme
+npm run ports -- install terminal/theme
 fpasoterm --plugin-enable terminal/theme.ts
 ```
 
