@@ -43,53 +43,31 @@ GitHub上の現在のcheckoutから新しいport metadataとsourceを取得す�
 
     npm run ports -- sync
 
-このcommandはgit pull --ff-onlyとINDEX検証だけを行います。plugin sourceのcopy、enable、実行はしません。Git diffをreviewしてから、必要なportだけを明示的にinstallまたはupdateしてください。
+このcommandはgit pull --ff-onlyとINDEX検証だけを行います。plugin sourceのcopy、enable、実行はしません。Git diffをreviewしてから、必要なportをfpasoterm本体でinstallしてください。
 
 localでの利用フローはPorts treeと同様です。
 
     npm run ports -- sync
     npm run ports -- search banner
-    npm run ports -- install terminal/welcome-banner --enable
+    fpasoterm --plugin-install terminal/welcome-banner --plugin-ports-dir . --enable
 
 searchはlocal INDEXを検索します。installはport authorの開発test用として残します。通常は`fpasoterm --plugin-install <id> --plugin-ports-dir .`を使用し、copy、上書き、enableはfpasoterm本体に任せます。
 
-## Port Command
+## Port開発用Command
 
-各 command はこの checkout と local plugin directory のみを操作します。
-networkからのdownloadやremote codeの実行は行いません。
+ports CLI は `User/plugins` を変更しません。install、update、uninstall、enable、plugin sourceの実行は行いません。
 
 ```sh
 # ID、name、公開author、descriptionを検索する
 npm run ports -- search banner
 
-# このcheckoutのsourceで導入済みの1件、または全portを再copyする
-npm run ports -- update terminal/welcome-banner --force
-npm run ports -- update all --force
-
-# copy済みpluginを削除する。--disableでfpasotermの設定も解除する
-npm run ports -- uninstall terminal/welcome-banner --disable
-
-# comma区切りで複数portをinstall、update、uninstallする
-npm run ports -- install terminal/hello,terminal/welcome-banner
-npm run ports -- update appearance/teal,appearance/high-contrast --force
-npm run ports -- uninstall terminal/hello,terminal/welcome-banner --disable
 ```
 
-`install`、`update`、`uninstall` にはすべて `--plugin-dir <path>` を
-指定できます。`update` はnetwork package updateではなく、このcheckoutからの
-local再copyで、新しいportを導入することはありません。plugin fileまたはenable状態を
-変更した後はfpasotermを再起動します。
-
-既存plugin fileは保護します。`install` と `update` は異なる内容のfileを`--force`なしで
-上書きしません。同一内容の場合は最新として表示します。fpasoterm本体のroot-level exampleは
-同名pluginが無ければbasenameで有効化できますが、portsは`terminal/theme.ts`のような
-category pathへ導入するため曖昧になりません。
+このcheckoutからinstallする場合は`fpasoterm --plugin-install <category/name> --plugin-ports-dir .`を使用します。再installは`--force`を追加し、削除は`fpasoterm --plugin-uninstall <file>`を使用します。
 
 ## 互換性確認
 
-`port.toml` には対応する最小fpasoterm versionを定義します。`install` と `update`
-はcopy前に自動で `fpasoterm --version` を実行して確認します。変更前の確認には次を
-使用します。
+`port.toml` には対応する最小fpasoterm versionを定義します。port変更前には次を実行して確認します。
 
 ```sh
 npm run ports -- check
@@ -103,7 +81,6 @@ wrapperではなくreleaseの`fpasoterm.exe`を直接指定してください。
 ```powershell
 $fpasoterm = (Resolve-Path "..\pr53\src-tauri\target\release\fpasoterm.exe").Path
 npm run ports -- compat all --fpasoterm $fpasoterm
-npm run ports -- install productivity/plugin-search --fpasoterm $fpasoterm
 ```
 
 Windowsではcurrent directory、`%APPDATA%\\npm`、`%USERPROFILE%\\.local\\bin`、
@@ -133,12 +110,11 @@ profileは`--profile`で選択する永続的なfpasoterm設定です。appearan
 terminalを変更します。複数のtheme portを有効にする場合は、読み込み順と上書きを意図して
 設定してください。
 
-Windows の source checkout では Node からinstallerを実行し、packaged
-`fpasoterm.cmd` または install済みの `fpasoterm` command でenableします。
+Windows の source checkoutでは、packaged `fpasoterm.cmd` またはinstall済みの
+`fpasoterm` commandでreview済みportをinstallします。
 
 ```powershell
-npm run ports -- install terminal/theme
-fpasoterm --plugin-enable terminal/theme
+fpasoterm --plugin-install terminal/theme --plugin-ports-dir . --enable
 ```
 
 [port format](docs/ports.ja.md)、[plugin API](api/fpasoterm-plugin.d.ts)、

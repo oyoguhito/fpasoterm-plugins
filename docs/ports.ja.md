@@ -34,21 +34,13 @@ codeをdownloadするdependencyは含めません。
 `INDEX` は全`port.toml`から生成するcommit対象の公開catalogです。plugin sourceを読まなくてもport metadataを一覧できます。port metadataを変更した後は`npm run ports -- index`を実行してください。CIと`npm run check`は`npm run ports -- index --check`で古いINDEXを検出します。
 
 GitHubからの更新とinstallは意図的に分離します。repository checkoutで
-npm run ports -- syncを実行するとgit pull --ff-onlyとINDEX検証を行います。このcommandはpluginをcopy、enable、実行しません。明示的なinstallまたはupdateの前にdiffをreviewしてください。
+npm run ports -- syncを実行するとgit pull --ff-onlyとINDEX検証を行います。このcommandはpluginをcopy、enable、実行しません。diffをreviewしてからfpasoterm本体でinstallしてください。
 
 ## 開発用Port操作
 
-`npm run ports -- search <query>` はportのID、name、descriptionを検索します。
-`install` は選択したsourceをUser plugin directoryへcopyします。`update <id>` は
-そのcopy済みsourceを現在のcheckoutにあるsourceで置き換えます。`update all` は導入済みの
-全portを同様に処理し、新しいportは導入しません。`uninstall <id>` は対象portがinstallした
-source fileだけを削除します。
-localの`fpasoterm` commandを利用できる場合、installまたはupdateでは`--enable`、
-uninstallでは`--disable`を追加できます。
+`npm run ports -- search <query>` はchecked-in local INDEXからportのID、name、author、descriptionを検索します。`list`、`index`、`sync`、`check`、`compat`はport authorの開発・検証用であり、`User/plugins`を変更しません。
 
-ports CLI が表示・実行する fpasoterm のenable/disable commandでは、`productivity/plugin-search` のような短いlocal selectorを使用します。fpasotermでは、selectorが曖昧でない場合に`plugins/` prefixと`.ts`/`.js` suffixを省略できます。
-
-これらのcommandはport authorによる開発・検証用として残します。利用者はreview済みcheckoutを`fpasoterm --plugin-install <id> --plugin-ports-dir <checkout>`で、信頼済み単独sourceを`fpasoterm --plugin-install-file <path>`でinstallしてください。repositoryの更新は別途Gitで行うため、利用者はsource変更を確認してからinstallできます。
+利用者はreview済みcheckoutを`fpasoterm --plugin-install <id> --plugin-ports-dir <checkout>`で、信頼済み単独sourceを`fpasoterm --plugin-install-file <path>`でinstallしてください。repositoryの更新は別途Gitで行うため、利用者はsource変更を確認してからinstallできます。
 
 新しいfpasoterm releaseでは、`fpasoterm --plugin-install <id>`で固定の公式repositoryから1件だけを直接取得する方法も利用できます。この方法はcheckoutやNode.jsを必要とせず、`--force`を明示しない限り既存fileを置き換えません。tree全体のreviewやcontributionには、このports CLIを使用します。
 
@@ -57,6 +49,5 @@ ports CLI が表示・実行する fpasoterm のenable/disable commandでは、`
 `npm run ports -- check` は全portのmanifest、source file、宣言plugin version、
 `window.fpasotermPluginApi`の使用を確認します。このcheckout外への書き込みは行いません。
 `npm run ports -- compat [port|all]` はinstall済みの`fpasoterm --version`を実行し、
-各portの`minFpasotermVersion`と比較します。installとupdateもcopy前に同じ互換性確認を
-行います。別binaryを確認する場合は`--fpasoterm <command>`を使用します。Windowsでは
+各portの`minFpasotermVersion`と比較します。別binaryを確認する場合は`--fpasoterm <command>`を使用します。Windowsでは
 `.cmd` wrapperよりreleaseの`fpasoterm.exe`を直接指定してください。

@@ -5,6 +5,10 @@ const assert = require('node:assert/strict');
 
 const root = path.resolve(__dirname, '..');
 const portsApi = require('./ports');
+const portsSource = fs.readFileSync(path.join(root, 'scripts', 'ports.ts'), 'utf8');
+assert.doesNotMatch(portsSource, /command === 'install'/);
+assert.doesNotMatch(portsSource, /command === 'update'/);
+assert.doesNotMatch(portsSource, /command === 'uninstall'/);
 const ports = portsApi.discoverPorts();
 assert.equal(portsApi.readPortIndex().length, 10);
 for (const identifier of [
@@ -22,7 +26,6 @@ for (const identifier of [
   assert.ok(ports.some((port) => port.id === identifier));
 }
 
-const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'fpasoterm-plugins-'));
 const welcomeBanner = portsApi.selectPort('terminal/welcome-banner');
 assert.deepEqual(
   portsApi.selectPorts('terminal/hello,terminal/welcome-banner').map((port) => port.id),
@@ -30,15 +33,6 @@ assert.deepEqual(
 );
 assert.equal(portsApi.selectPorts('all', true).length, 10);
 assert.throws(() => portsApi.selectPorts('all,terminal/hello', true), /must be used alone/);
-portsApi.installPort(welcomeBanner, tempDirectory, false);
-assert.ok(fs.existsSync(path.join(tempDirectory, 'terminal', 'welcome-banner.ts')));
-const hello = portsApi.selectPort('terminal/hello');
-portsApi.installPort(hello, tempDirectory, false);
-const amber = portsApi.selectPort('appearance/amber');
-portsApi.installPort(amber, tempDirectory, false);
-assert.ok(fs.existsSync(path.join(tempDirectory, 'appearance', 'amber.ts')));
-portsApi.assertInstalled([welcomeBanner, hello, amber], tempDirectory);
-portsApi.updatePort(welcomeBanner, tempDirectory, false);
 assert.deepEqual(
   portsApi.searchPorts('WELCOME').map((port) => port.id),
   ['terminal/welcome-banner'],
@@ -75,28 +69,6 @@ assert.throws(
   () => portsApi.validatePort({ ...welcomeBanner, author: 'person@example.com' }),
   /must be a public name or GitHub account/,
 );
-portsApi.uninstallPort(welcomeBanner, tempDirectory, false);
-assert.ok(!fs.existsSync(path.join(tempDirectory, 'terminal', 'welcome-banner.ts')));
-portsApi.uninstallPort(hello, tempDirectory, false);
-portsApi.uninstallPort(amber, tempDirectory, false);
-assert.ok(!fs.existsSync(path.join(tempDirectory, 'appearance', 'amber.ts')));
-portsApi.installPort(welcomeBanner, tempDirectory, false);
-fs.writeFileSync(path.join(tempDirectory, 'terminal', 'welcome-banner.ts'), '// local plugin\n');
-assert.throws(
-  () => portsApi.installPort(welcomeBanner, tempDirectory, false),
-  /rerun with --force to replace it/,
-);
-assert.throws(
-  () => portsApi.updatePort(welcomeBanner, tempDirectory, false),
-  /rerun with --force to replace it/,
-);
-portsApi.updatePort(welcomeBanner, tempDirectory, false, 'fpasoterm', true);
-assert.ok(fs.existsSync(path.join(tempDirectory, 'terminal', 'welcome-banner.ts')));
-assert.throws(
-  () => portsApi.updatePort(portsApi.selectPort('terminal/theme'), tempDirectory, false),
-  /is not installed/,
-);
-
 ports.forEach(portsApi.validatePort);
 assert.equal(ports.length, 10);
 assert.doesNotThrow(() => portsApi.assertPortIndexCurrent());

@@ -57,13 +57,13 @@ npm run ports -- compat <category/name>
 
 `compat` tests the locally installed fpasoterm version. To test a specific
 binary or the Windows wrapper, pass `--fpasoterm <command>`. Install the port
-locally and restart fpasoterm to verify its visible behavior:
+with fpasoterm and restart it to verify visible behavior:
 
 ```sh
-npm run ports -- install <category/name> --enable
+fpasoterm --plugin-install <category/name> --plugin-ports-dir . --enable
 ```
 
-The installer does not replace a different existing plugin file unless
+fpasoterm does not replace a different existing plugin file unless
 `--force` is supplied. Review the source before using that option.
 
 Run `npm run security` before a PR when the change adds dependencies, workflow

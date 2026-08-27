@@ -23,8 +23,8 @@ body:
     attributes:
       label: Reproduction steps
       placeholder: |
-        1. npm run ports -- install ...
-        2. fpasoterm --plugin-enable ...
-        3. Restart fpasoterm
+        1. fpasoterm --plugin-install ... --enable
+        2. Restart fpasoterm
+        3. Describe the observed behavior
     validations:
       required: true

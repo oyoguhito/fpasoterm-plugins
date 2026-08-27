@@ -56,55 +56,40 @@ and source:
     npm run ports -- sync
 
 The command runs git pull --ff-only and validates INDEX. It does not copy,
-enable, or execute plugin source. Review the Git diff, then install or update
-selected ports explicitly.
+enable, or execute plugin source. Review the Git diff, then install a selected
+port with fpasoterm.
 
 The local workflow is equivalent to a ports tree:
 
     npm run ports -- sync
     npm run ports -- search banner
-    npm run ports -- install terminal/welcome-banner --enable
+    fpasoterm --plugin-install terminal/welcome-banner --plugin-ports-dir . --enable
 
 Search reads the local INDEX. Install reads only the selected local port recipe
 and is retained for port-author development tests. For normal use, run
 `fpasoterm --plugin-install <id> --plugin-ports-dir .` so fpasoterm owns
 the copy, overwrite, and enable operation.
 
-## Port Commands
+## Port Development Commands
 
-The commands operate only on this checked-out repository and your local plugin
-directory. They do not download or execute remote code.
+The ports CLI is read-only with respect to `User/plugins`; it does not install,
+update, uninstall, enable, or execute plugin source.
 
 ```sh
 # Search IDs, names, public authors, and descriptions.
 npm run ports -- search banner
 
-# Refresh one installed plugin from this checkout, or every installed port.
-npm run ports -- update terminal/welcome-banner --force
-npm run ports -- update all --force
-
-# Remove the copied plugin. Add --disable to also update fpasoterm config.
-npm run ports -- uninstall terminal/welcome-banner --disable
-
-# Install, update, or remove multiple ports with comma-separated IDs.
-npm run ports -- install terminal/hello,terminal/welcome-banner
-npm run ports -- update appearance/teal,appearance/high-contrast --force
-npm run ports -- uninstall terminal/hello,terminal/welcome-banner --disable
 ```
 
-Every install, update, and uninstall command accepts `--plugin-dir <path>`.
-
-Existing plugin files are protected. `install` and `update` do not replace a
-different file unless `--force` is explicit. An identical file is reported as
-already up to date. fpasoterm's own root-level examples can be enabled by
-basename while no duplicate exists; ports install category paths such as
-`terminal/theme.ts` to remain unambiguous.
+Install from this checkout with
+`fpasoterm --plugin-install <category/name> --plugin-ports-dir .`. Reinstall
+with `--force`; remove an installed plugin with
+`fpasoterm --plugin-uninstall <file>`.
 
 ## Compatibility Checks
 
-`port.toml` declares the minimum supported fpasoterm version. `install` and
-`update` run this check automatically against `fpasoterm --version` before any
-file is copied. Run it explicitly before changing ports:
+`port.toml` declares the minimum supported fpasoterm version. Run this check
+explicitly before changing a port:
 
 ```sh
 npm run ports -- check
@@ -118,7 +103,6 @@ the release `fpasoterm.exe` directly rather than its `.cmd` wrapper:
 ```powershell
 $fpasoterm = (Resolve-Path "..\pr53\src-tauri\target\release\fpasoterm.exe").Path
 npm run ports -- compat all --fpasoterm $fpasoterm
-npm run ports -- install productivity/plugin-search --fpasoterm $fpasoterm
 ```
 
 On Windows the ports CLI searches the current directory, `%APPDATA%\\npm`,
@@ -151,12 +135,11 @@ Profiles are persistent fpasoterm configuration selected with `--profile`.
 Appearance ports instead change the terminal at runtime. Do not enable multiple
 theme ports unless their order and overrides are intentional.
 
-On a Windows source checkout, run the installer with Node and use the packaged
-`fpasoterm.cmd` wrapper or installed `fpasoterm` command for enablement:
+On a Windows source checkout, use the packaged `fpasoterm.cmd` wrapper or the
+installed `fpasoterm` command to install a reviewed port:
 
 ```powershell
-npm run ports -- install terminal/theme
-fpasoterm --plugin-enable terminal/theme
+fpasoterm --plugin-install terminal/theme --plugin-ports-dir . --enable
 ```
 
 See [Japanese documentation](README.ja.md), [port format](docs/ports.en.md),
