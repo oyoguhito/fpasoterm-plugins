@@ -51,8 +51,8 @@ generated file変更は同じPRに含めないでください。
 
 ```sh
 npm run check
-node scripts/ports.js check
-node scripts/ports.js compat <category/name>
+npm run ports -- check
+npm run ports -- compat <category/name>
 ```
 
 `compat`はlocalにinstall済みのfpasoterm versionを確認します。特定binaryまたは
@@ -60,7 +60,7 @@ Windows wrapperを確認する場合は`--fpasoterm <command>`を指定してく
 installしてfpasotermを再起動し、表示上の動作も確認します。
 
 ```sh
-node scripts/ports.js install <category/name> --enable
+npm run ports -- install <category/name> --enable
 ```
 
 installerは異なる内容の既存plugin fileを`--force`なしで置き換えません。このoptionを

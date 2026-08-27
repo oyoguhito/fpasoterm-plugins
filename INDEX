@@ -1,0 +1,9 @@
+appearance/amber|amber|1.0.0|oyoguhito|Applies an amber-on-charcoal terminal palette for a warm high-contrast appearance.|MIT|1.5.5|appearance/amber.ts
+appearance/high-contrast|high-contrast|1.0.0|oyoguhito|Applies a high-contrast palette for clearly separated terminal colors.|MIT|1.5.5|appearance/high-contrast.ts
+appearance/teal|teal|1.0.0|oyoguhito|Applies a teal terminal palette with a translucent dark background.|MIT|1.5.5|appearance/teal.ts
+productivity/git-status|git-status|1.0.0|oyoguhito|Adds a Plugins menu action that inserts git status --short without executing it.|MIT|1.5.5|productivity/git-status.ts
+productivity/session-marker|session-marker|1.0.0|oyoguhito|Adds a Plugins menu action that writes a local timestamp marker for terminal logs.|MIT|1.5.5|productivity/session-marker.ts
+terminal/hello|hello|1.0.0|oyoguhito|Writes the minimal fpasoterm plugin confirmation after startup.|MIT|1.5.5|terminal/hello.ts
+terminal/status-banner|status-banner|1.0.0|oyoguhito|Adds a Plugins menu command that prints terminal status.|MIT|1.5.5|terminal/status-banner.ts
+terminal/theme|theme|1.0.0|oyoguhito|Applies the visible teal terminal palette from the fpasoterm example.|MIT|1.5.5|terminal/theme.ts
+terminal/welcome-banner|welcome-banner|1.0.0|oyoguhito|Prints a concise welcome message after the terminal is ready.|MIT|1.5.5|terminal/welcome-banner.ts

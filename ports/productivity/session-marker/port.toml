@@ -1,0 +1,10 @@
+[port]
+id = "productivity/session-marker"
+name = "session-marker"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Adds a Plugins menu action that writes a local timestamp marker for terminal logs."
+license = "MIT"
+minFpasotermVersion = "1.5.5"
+source = "plugin.ts"
+installPath = "productivity/session-marker.ts"

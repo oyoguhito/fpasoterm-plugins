@@ -5,8 +5,8 @@
 ## Validation
 
 - [ ] `npm run check`
-- [ ] `node scripts/ports.js check`
-- [ ] `node scripts/ports.js compat <port|all>`
+- [ ] `npm run ports -- check`
+- [ ] `npm run ports -- compat <port|all>`
 - [ ] Tested installed plugin behavior after restarting fpasoterm
 
 fpasoterm version:

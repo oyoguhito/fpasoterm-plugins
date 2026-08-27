@@ -51,8 +51,8 @@ PR.
 
 ```sh
 npm run check
-node scripts/ports.js check
-node scripts/ports.js compat <category/name>
+npm run ports -- check
+npm run ports -- compat <category/name>
 ```
 
 `compat` tests the locally installed fpasoterm version. To test a specific
@@ -60,7 +60,7 @@ binary or the Windows wrapper, pass `--fpasoterm <command>`. Install the port
 locally and restart fpasoterm to verify its visible behavior:
 
 ```sh
-node scripts/ports.js install <category/name> --enable
+npm run ports -- install <category/name> --enable
 ```
 
 The installer does not replace a different existing plugin file unless

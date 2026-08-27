@@ -29,9 +29,22 @@ Before submitting a port, run `npm run check`. Include only public source and
 documentation. Do not include credentials, personal paths, generated caches,
 or dependencies that download code at install time.
 
+## INDEX
+
+`INDEX` is the checked-in public catalog generated from every
+`port.toml`. It contains the metadata needed to browse ports without reading
+plugin source. Run `npm run ports -- index` after changing port metadata.
+CI and `npm run check` reject a stale index with
+`npm run ports -- index --check`.
+
+GitHub updates are intentionally separate from installation. Run
+npm run ports -- sync from the repository checkout to execute git pull
+--ff-only and validate INDEX. The command does not copy, enable, or execute a
+plugin. Review the diff before running an explicit install or update command.
+
 ## Local Port Operations
 
-`node scripts/ports.js search <query>` searches port IDs, names, and
+`npm run ports -- search <query>` searches port IDs, names, and
 descriptions. `install` copies the selected source into the user plugin
 directory. `update <id>` replaces that copied source with the source from the
 current checkout; `update all` does the same for every installed port and does
@@ -44,23 +57,17 @@ These are intentionally local operations. Updating the repository itself is a
 separate Git operation, so users can review source changes before installing
 them.
 
-Install and update preserve an existing file with different contents. Pass
-`--force` only after reviewing the replacement source. The fpasoterm CLI accepts
-a basename only when it resolves to one plugin; ports install category paths so
-users can enable a port with an unambiguous selector such as
-`terminal/welcome-banner.ts`.
-
-`install`, `update`, `uninstall`, and `compat` accept comma-separated port IDs.
-For example: `node scripts/ports.js install terminal/hello,terminal/theme`.
-`update all` updates every installed port. The command validates every selected
-port before changing files, avoiding partial changes when one requested port is
-missing.
+Recent fpasoterm releases also support `fpasoterm --plugin-install <id>` for a
+single-port direct download from the fixed official repository. That path does
+not require this checkout or Node.js; it preserves existing files unless
+`--plugin-install-force` is explicit. Use this ports CLI when reviewing or
+contributing the full local tree.
 
 ## Validation And Compatibility
 
-`node scripts/ports.js check` validates every port manifest, source file,
+`npm run ports -- check` validates every port manifest, source file,
 declared plugin version, and use of `window.fpasotermPluginApi`. It does not
-write outside this checkout. `node scripts/ports.js compat [port|all]` runs the
+write outside this checkout. `npm run ports -- compat [port|all]` runs the
 installed `fpasoterm --version` command and compares it to each port's
 `minFpasotermVersion`. Install and update run the same compatibility check
 before copying. Use `--fpasoterm <command>` to check another binary or a
