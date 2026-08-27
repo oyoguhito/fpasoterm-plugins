@@ -2,7 +2,6 @@
 
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
@@ -42,7 +41,7 @@ function discoverPorts(directory: string = portsRoot): Port[] {
   return ports.sort((left, right) => left.id.localeCompare(right.id));
 }
 
-// Rejects malformed port metadata before copy or enable operations use it.
+// Rejects malformed port metadata before catalog and compatibility operations use it.
 function validatePort(port: Port): void {
   const relativeDirectory = path.relative(portsRoot, port.directory).replaceAll(path.sep, '/');
   if (!port.id || port.id !== relativeDirectory) {
@@ -67,6 +66,9 @@ function validatePort(port: Port): void {
   if (!fs.existsSync(sourcePath)) {
     throw new Error(`${port.manifestPath}: source file ${port.source} does not exist`);
   }
+  if (!fs.existsSync(path.join(port.directory, 'README.md'))) {
+    throw new Error(`${port.manifestPath}: README.md does not exist`);
+  }
   const installPath = path.normalize(port.installPath);
   if (installPath.startsWith(`..${path.sep}`) || installPath === '..') {
     throw new Error(`${port.manifestPath}: installPath must not escape User/plugins`);
@@ -80,23 +82,16 @@ function validatePort(port: Port): void {
   }
 }
 
-// Returns the default writable plugin directory used by fpasoterm.
-function defaultPluginDirectory() {
-  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
-  return path.join(configHome, 'fpasoterm', 'User', 'plugins');
-}
-
 function printUsage() {
   console.log(`Usage:
   npm run ports -- list
   npm run ports -- index [--check]
   npm run ports -- sync
   npm run ports -- search <query>
+  npm run ports -- info <category/name>
   npm run ports -- check
   npm run ports -- compat [category/name[,category/name...]|all] [--fpasoterm <command>]
-  npm run ports -- install <category/name[,category/name...]> [--force] [--enable] [--plugin-dir <path>] [--fpasoterm <command>]
-  npm run ports -- update <category/name[,category/name...]|all> [--force] [--enable] [--plugin-dir <path>] [--fpasoterm <command>]
-  npm run ports -- uninstall <category/name[,category/name...]> [--disable] [--plugin-dir <path>] [--fpasoterm <command>]
+  npm run ports -- --help
 `);
 }
 
@@ -184,14 +179,14 @@ function syncCheckout() {
   const result = childProcess.spawnSync('git', ['pull', '--ff-only'], {
     cwd: root,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    windowsHide: true,
   });
   if (result.error || result.status !== 0) {
     const detail = result.error?.message || `exit status ${result.status}`;
     throw new Error(`could not sync the Git checkout: ${detail}`);
   }
   assertPortIndexCurrent();
-  console.log('synced checkout; review changes, then install or update selected ports');
+  console.log('synced checkout; review changes, then use fpasoterm --plugin-install <id> --plugin-ports-dir .');
 }
 
 function selectPort(id) {
@@ -211,7 +206,7 @@ function selectPorts(selectors, allowAll = false) {
   }
   if (identifiers.includes('all')) {
     if (!allowAll || identifiers.length !== 1) {
-      throw new Error("'all' must be used alone with compat or update");
+      throw new Error("'all' must be used alone with compat");
     }
     return discoverPorts();
   }
@@ -249,14 +244,98 @@ function printPorts(ports) {
   }
 }
 
-function runFpasoterm(command, args, failureMessage) {
-  const result = childProcess.spawnSync(command, args, {
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-  });
-  if (result.error || result.status !== 0) {
-    throw new Error(failureMessage);
+const terminalStyle = {
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  cyan: '\x1b[36m',
+  dim: '\x1b[2m',
+  yellow: '\x1b[33m',
+};
+
+// Renders the small README subset used by ports without requiring a Markdown dependency.
+function formatMarkdownForTerminal(markdown) {
+  let fencedCode = false;
+  return markdown.replace(/\r\n?/g, '\n').split('\n').map((line) => {
+    if (/^```/.test(line)) {
+      fencedCode = !fencedCode;
+      return fencedCode ? `${terminalStyle.dim}--- code ---${terminalStyle.reset}` : `${terminalStyle.dim}------------${terminalStyle.reset}`;
+    }
+    if (fencedCode) {
+      return `${terminalStyle.yellow}${line}${terminalStyle.reset}`;
+    }
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      return `${terminalStyle.bold}${terminalStyle.cyan}${heading[2]}${terminalStyle.reset}`;
+    }
+    return line
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, `$1 ${terminalStyle.dim}<$2>${terminalStyle.reset}`)
+      .replace(/\*\*([^*]+)\*\*/g, `${terminalStyle.bold}$1${terminalStyle.reset}`)
+      .replace(/`([^`]+)`/g, `${terminalStyle.yellow}$1${terminalStyle.reset}`);
+  }).join('\n').trimEnd();
+}
+
+// Prints public port metadata and its human-oriented README without reading plugin source.
+function printPortInfo(port) {
+  validatePort(port);
+  const readmePath = path.join(port.directory, 'README.md');
+  const relativeReadmePath = path.relative(root, readmePath).replaceAll(path.sep, '/');
+  console.log(`${terminalStyle.bold}${port.id}${terminalStyle.reset}`);
+  console.log(`name: ${port.name}`);
+  console.log(`version: ${port.version}`);
+  console.log(`author: ${port.author}`);
+  console.log(`license: ${port.license}`);
+  console.log(`requires fpasoterm: >= ${port.minFpasotermVersion}`);
+  console.log(`install path: ${port.installPath}`);
+  console.log(`readme: ${relativeReadmePath}\n`);
+  console.log(formatMarkdownForTerminal(fs.readFileSync(readmePath, 'utf8')));
+}
+
+// Finds Windows command wrappers explicitly instead of relying on shell:true.
+function resolveWindowsCommand(command: string, environment = process.env): string {
+  if (path.extname(command) || command.includes('/') || command.includes('\\')) {
+    return command;
   }
+  const pathEntries = [environment.Path, environment.PATH]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .flatMap((value) => value.split(';'));
+  const directories = [
+    process.cwd(),
+    environment.APPDATA && path.join(environment.APPDATA, 'npm'),
+    environment.USERPROFILE && path.join(environment.USERPROFILE, '.local', 'bin'),
+    ...pathEntries,
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map((value) => value.replace(/^"|"$/g, ''));
+  for (const extension of ['.cmd', '.exe', '.bat', '']) {
+    for (const directory of directories) {
+      const candidate = path.join(directory, `${command}${extension}`);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return command;
+}
+
+// Quotes one argv component for cmd.exe when a Windows .cmd/.bat wrapper is selected.
+function quoteWindowsCommandArgument(value: string): string {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+// Builds a shell-free child-process invocation for native executables and Windows wrappers.
+function fpasotermInvocation(command: string, args: string[], platform = process.platform, environment = process.env) {
+  const resolved = platform === 'win32' ? resolveWindowsCommand(command, environment) : command;
+  if (platform === 'win32' && /\.(?:cmd|bat)$/i.test(resolved)) {
+    // Release artifacts ship fpasoterm.cmd beside fpasoterm.exe. Prefer the
+    // native executable so cmd.exe does not reinterpret relative path arguments.
+    const nativeExecutable = resolved.replace(/\.(?:cmd|bat)$/i, '.exe');
+    if (fs.existsSync(nativeExecutable)) {
+      return { command: nativeExecutable, args };
+    }
+    const commandLine = [resolved, ...args].map(quoteWindowsCommandArgument).join(' ');
+    return {
+      command: environment.ComSpec || 'cmd.exe',
+      args: ['/d', '/s', '/c', commandLine],
+    };
+  }
+  return { command: resolved, args };
 }
 
 // Compares stable major.minor.patch versions used by the port compatibility field.
@@ -282,13 +361,17 @@ function parseFpasotermVersion(output) {
 
 // Reads the application version from an installed binary or fpasoterm.cmd wrapper.
 function readFpasotermVersion(command = 'fpasoterm') {
-  const result = childProcess.spawnSync(command, ['--version'], {
+  const invocation = fpasotermInvocation(command, ['--version']);
+  const result = childProcess.spawnSync(invocation.command, invocation.args, {
     encoding: 'utf8',
-    shell: process.platform === 'win32',
+    windowsHide: true,
   });
   if (result.error || result.status !== 0) {
     const detail = result.error?.message || result.stderr?.trim() || `exit status ${result.status}`;
-    throw new Error(`cannot run ${command} --version: ${detail}`);
+    const hint = process.platform === 'win32'
+      ? ' Specify the installed wrapper explicitly, for example: --fpasoterm C:\\path\\to\\fpasoterm.cmd'
+      : '';
+    throw new Error(`cannot run ${command} --version: ${detail}.${hint}`);
   }
   try {
     return parseFpasotermVersion(`${result.stdout}\n${result.stderr}`);
@@ -313,88 +396,6 @@ function checkCompatibility(ports, command) {
   return fpasotermVersion;
 }
 
-function copyPortSource(port, pluginDirectory, force) {
-  const destination = path.join(pluginDirectory, port.installPath);
-  const source = path.join(port.directory, port.source);
-  const replacing = fs.existsSync(destination);
-  if (replacing) {
-    if (fs.readFileSync(source).equals(fs.readFileSync(destination))) {
-      console.log(`already up to date ${port.id} -> ${destination}`);
-      return false;
-    }
-    if (!force) {
-      throw new Error(`${port.id} already exists at ${destination}; rerun with --force to replace it`);
-    }
-  }
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.copyFileSync(source, destination);
-  console.log(`${replacing ? 'updated' : 'installed'} ${port.id} -> ${destination}`);
-  return true;
-}
-
-// Copies a port source only when the target is new, unchanged, or --force is explicit.
-function installPort(port, pluginDirectory, enable, fpasotermCommand = 'fpasoterm', force = false) {
-  copyPortSource(port, pluginDirectory, force);
-  const selector = port.installPath.replaceAll(path.sep, '/');
-  if (!enable) {
-    console.log(`enable with: fpasoterm --plugin-enable ${selector}`);
-    return;
-  }
-  runFpasoterm(fpasotermCommand, ['--plugin-enable', selector],
-    `installed ${selector}, but automatic enable failed; run: fpasoterm --plugin-enable ${selector}`);
-}
-
-function installedPluginPath(port, pluginDirectory) {
-  return path.join(pluginDirectory, port.installPath);
-}
-
-function isInstalled(port, pluginDirectory) {
-  return fs.existsSync(installedPluginPath(port, pluginDirectory));
-}
-
-function assertInstalled(ports, pluginDirectory) {
-  for (const port of ports) {
-    if (!isInstalled(port, pluginDirectory)) {
-      throw new Error(`${port.id} is not installed at ${installedPluginPath(port, pluginDirectory)}`);
-    }
-  }
-}
-
-// Updates an existing local copy and never installs a new plugin implicitly.
-function updatePort(port, pluginDirectory, enable, fpasotermCommand = 'fpasoterm', force = false) {
-  assertInstalled([port], pluginDirectory);
-  installPort(port, pluginDirectory, enable, fpasotermCommand, force);
-}
-
-// Removes only the plugin file installed by the selected port.
-function uninstallPort(port, pluginDirectory, disable, fpasotermCommand = 'fpasoterm') {
-  const destination = installedPluginPath(port, pluginDirectory);
-  if (!fs.existsSync(destination)) {
-    throw new Error(`${port.id} is not installed at ${destination}`);
-  }
-  fs.unlinkSync(destination);
-  console.log(`uninstalled ${port.id} from ${destination}`);
-  const selector = port.installPath.replaceAll(path.sep, '/');
-  if (!disable) {
-    console.log(`disable with: fpasoterm --plugin-disable ${selector}`);
-    return;
-  }
-  runFpasoterm(fpasotermCommand, ['--plugin-disable', selector],
-    `uninstalled ${selector}, but automatic disable failed; run: fpasoterm --plugin-disable ${selector}`);
-}
-
-function readPluginDirectory(arguments_) {
-  const directoryIndex = arguments_.indexOf('--plugin-dir');
-  if (directoryIndex === -1) {
-    return defaultPluginDirectory();
-  }
-  const pluginDirectory = arguments_[directoryIndex + 1] || '';
-  if (!pluginDirectory) {
-    throw new Error('--plugin-dir requires a path');
-  }
-  return path.resolve(pluginDirectory);
-}
-
 function readFpasotermCommand(arguments_) {
   const commandIndex = arguments_.indexOf('--fpasoterm');
   if (commandIndex === -1) {
@@ -409,6 +410,10 @@ function readFpasotermCommand(arguments_) {
 
 function main() {
   const [command, firstArgument, ...remaining] = process.argv.slice(2);
+  if (command === '--help' || command === '-h') {
+    printUsage();
+    return 0;
+  }
   const optionOnlyCommand = command === 'compat' && firstArgument?.startsWith('--');
   const identifier = optionOnlyCommand ? undefined : firstArgument;
   const rest = optionOnlyCommand ? [firstArgument, ...remaining] : remaining;
@@ -431,42 +436,14 @@ function main() {
     if (matches.length === 0) {
       return 1;
     }
+  } else if (command === 'info' && identifier && rest.length === 0) {
+    printPortInfo(selectPort(identifier));
   } else if (command === 'check') {
     discoverPorts().forEach(validatePort);
     console.log(`checked ${discoverPorts().length} ports`);
   } else if (command === 'compat') {
     const ports = !identifier ? discoverPorts() : selectPorts(identifier, true);
     checkCompatibility(ports, readFpasotermCommand(rest));
-  } else if (command === 'install' && identifier) {
-    const ports = selectPorts(identifier);
-    const fpasotermCommand = readFpasotermCommand(rest);
-    checkCompatibility(ports, fpasotermCommand);
-    for (const port of ports) {
-      installPort(port, readPluginDirectory(rest), rest.includes('--enable'), fpasotermCommand, rest.includes('--force'));
-    }
-  } else if (command === 'update' && identifier) {
-    const pluginDirectory = readPluginDirectory(rest);
-    const selected = selectPorts(identifier, true);
-    const ports = identifier === 'all'
-      ? selected.filter((port) => isInstalled(port, pluginDirectory))
-      : selected;
-    if (ports.length === 0) {
-      throw new Error('no installed ports are available to update');
-    }
-    assertInstalled(ports, pluginDirectory);
-    const fpasotermCommand = readFpasotermCommand(rest);
-    checkCompatibility(ports, fpasotermCommand);
-    for (const port of ports) {
-      updatePort(port, pluginDirectory, rest.includes('--enable'), fpasotermCommand, rest.includes('--force'));
-    }
-  } else if (command === 'uninstall' && identifier) {
-    const ports = selectPorts(identifier);
-    const pluginDirectory = readPluginDirectory(rest);
-    assertInstalled(ports, pluginDirectory);
-    const fpasotermCommand = readFpasotermCommand(rest);
-    for (const port of ports) {
-      uninstallPort(port, pluginDirectory, rest.includes('--disable'), fpasotermCommand);
-    }
   } else {
     printUsage();
     return command ? 2 : 0;
@@ -484,28 +461,24 @@ if (require.main === module) {
 }
 
 module.exports = {
-  defaultPluginDirectory,
   assertCompatible,
-  assertInstalled,
   checkCompatibility,
   compareVersions,
-  copyPortSource,
   discoverPorts,
+  fpasotermInvocation,
   portIndex,
   readPortIndex,
   normalizeIndexLineEndings,
   serializedPortIndex,
   assertPortIndexCurrent,
   syncCheckout,
-  installPort,
-  isInstalled,
   printPorts,
+  printPortInfo,
+  formatMarkdownForTerminal,
   parseFpasotermVersion,
   readFpasotermVersion,
   searchPorts,
   selectPort,
   selectPorts,
-  uninstallPort,
-  updatePort,
   validatePort,
 };

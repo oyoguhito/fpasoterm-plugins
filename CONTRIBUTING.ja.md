@@ -60,10 +60,10 @@ Windows wrapperを確認する場合は`--fpasoterm <command>`を指定してく
 installしてfpasotermを再起動し、表示上の動作も確認します。
 
 ```sh
-npm run ports -- install <category/name> --enable
+fpasoterm --plugin-install <category/name> --plugin-ports-dir . --enable
 ```
 
-installerは異なる内容の既存plugin fileを`--force`なしで置き換えません。このoptionを
+fpasotermは異なる内容の既存plugin fileを`--force`なしで置き換えません。このoptionを
 使用する前にsourceを確認してください。
 
 dependency、workflow file、external dataを扱うsourceを追加する場合は、PR前に

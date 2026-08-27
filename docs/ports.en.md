@@ -40,27 +40,26 @@ CI and `npm run check` reject a stale index with
 GitHub updates are intentionally separate from installation. Run
 npm run ports -- sync from the repository checkout to execute git pull
 --ff-only and validate INDEX. The command does not copy, enable, or execute a
-plugin. Review the diff before running an explicit install or update command.
+plugin. Review the diff before installing through fpasoterm.
 
-## Local Port Operations
+## Development Port Operations
 
-`npm run ports -- search <query>` searches port IDs, names, and
-descriptions. `install` copies the selected source into the user plugin
-directory. `update <id>` replaces that copied source with the source from the
-current checkout; `update all` does the same for every installed port and does
-not install a new port. `uninstall <id>` removes only that port's installed
-source file. Add `--enable` to install or
-update, or `--disable` to uninstall, when the local `fpasoterm` command is
-available.
+`npm run ports -- search <query>` searches port IDs, names, authors, and
+descriptions in the checked-in local INDEX. `npm run ports -- info <id>` prints
+one port's public metadata and renders its `README.md` for a terminal. `list`,
+`index`, `sync`, `check`, and `compat` support port author development and
+validation. They never modify `User/plugins`.
 
-These are intentionally local operations. Updating the repository itself is a
-separate Git operation, so users can review source changes before installing
-them.
+End users should install a reviewed checkout with
+`fpasoterm --plugin-install <id> --plugin-ports-dir <checkout>` or a
+trusted standalone source with `fpasoterm --plugin-install-file <path>`.
+Updating the repository itself is a separate Git operation, so users can review
+source changes before installing them.
 
 Recent fpasoterm releases also support `fpasoterm --plugin-install <id>` for a
 single-port direct download from the fixed official repository. That path does
 not require this checkout or Node.js; it preserves existing files unless
-`--plugin-install-force` is explicit. Use this ports CLI when reviewing or
+`--force` is explicit. Use this ports CLI when reviewing or
 contributing the full local tree.
 
 ## Validation And Compatibility
@@ -69,6 +68,5 @@ contributing the full local tree.
 declared plugin version, and use of `window.fpasotermPluginApi`. It does not
 write outside this checkout. `npm run ports -- compat [port|all]` runs the
 installed `fpasoterm --version` command and compares it to each port's
-`minFpasotermVersion`. Install and update run the same compatibility check
-before copying. Use `--fpasoterm <command>` to check another binary or a
-Windows `fpasoterm.cmd` wrapper.
+`minFpasotermVersion`. Use `--fpasoterm <command>` to check another binary. On Windows
+prefer a release `fpasoterm.exe` path over the `.cmd` wrapper.
