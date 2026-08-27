@@ -38,7 +38,7 @@ npm run ports -- syncを実行するとgit pull --ff-onlyとINDEX検証を行い
 
 ## 開発用Port操作
 
-`npm run ports -- search <query>` はchecked-in local INDEXからportのID、name、author、descriptionを検索します。`list`、`index`、`sync`、`check`、`compat`はport authorの開発・検証用であり、`User/plugins`を変更しません。
+`npm run ports -- search <query>` はchecked-in local INDEXからportのID、name、author、descriptionを検索します。`npm run ports -- info <id>`は1つのportの公開metadataと`README.md`をterminal向けに整形して表示します。`list`、`index`、`sync`、`check`、`compat`はport authorの開発・検証用であり、`User/plugins`を変更しません。
 
 利用者はreview済みcheckoutを`fpasoterm --plugin-install <id> --plugin-ports-dir <checkout>`で、信頼済み単独sourceを`fpasoterm --plugin-install-file <path>`でinstallしてください。repositoryの更新は別途Gitで行うため、利用者はsource変更を確認してからinstallできます。
 

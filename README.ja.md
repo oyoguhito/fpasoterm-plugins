@@ -49,6 +49,7 @@ localでの利用フローはPorts treeと同様です。
 
     npm run ports -- sync
     npm run ports -- search banner
+    npm run ports -- info terminal/welcome-banner
     fpasoterm --plugin-install terminal/welcome-banner --plugin-ports-dir . --enable
 
 searchはlocal INDEXを検索します。installはport authorの開発test用として残します。通常は`fpasoterm --plugin-install <id> --plugin-ports-dir .`を使用し、copy、上書き、enableはfpasoterm本体に任せます。
@@ -60,6 +61,9 @@ ports CLI は `User/plugins` を変更しません。install、update、uninstal
 ```sh
 # ID、name、公開author、descriptionを検索する
 npm run ports -- search banner
+
+# 1つのportのmetadataと整形済みREADME.mdを読む
+npm run ports -- info appearance/teal
 
 ```
 

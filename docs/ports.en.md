@@ -45,9 +45,10 @@ plugin. Review the diff before installing through fpasoterm.
 ## Development Port Operations
 
 `npm run ports -- search <query>` searches port IDs, names, authors, and
-descriptions in the checked-in local INDEX. `list`, `index`, `sync`, `check`,
-and `compat` support port author development and validation. They never modify
-`User/plugins`.
+descriptions in the checked-in local INDEX. `npm run ports -- info <id>` prints
+one port's public metadata and renders its `README.md` for a terminal. `list`,
+`index`, `sync`, `check`, and `compat` support port author development and
+validation. They never modify `User/plugins`.
 
 End users should install a reviewed checkout with
 `fpasoterm --plugin-install <id> --plugin-ports-dir <checkout>` or a

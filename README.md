@@ -63,6 +63,7 @@ The local workflow is equivalent to a ports tree:
 
     npm run ports -- sync
     npm run ports -- search banner
+    npm run ports -- info terminal/welcome-banner
     fpasoterm --plugin-install terminal/welcome-banner --plugin-ports-dir . --enable
 
 Search reads the local INDEX. Install reads only the selected local port recipe
@@ -78,6 +79,9 @@ update, uninstall, enable, or execute plugin source.
 ```sh
 # Search IDs, names, public authors, and descriptions.
 npm run ports -- search banner
+
+# Read one port's metadata and rendered README.md.
+npm run ports -- info appearance/teal
 
 ```
 

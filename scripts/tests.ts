@@ -43,6 +43,11 @@ assert.deepEqual(portsApi.searchPorts('session').map((port) => port.id), [
 ]);
 assert.deepEqual(portsApi.searchPorts('search').map((port) => port.id), ['productivity/plugin-search']);
 assert.equal(portsApi.searchPorts('oyoguhito').length, 10);
+assert.match(
+  portsApi.formatMarkdownForTerminal('# Title\n\nUse **fpasoterm**.\n[Docs](https://example.test)\n```sh\necho ok\n```'),
+  /Title[\s\S]*fpasoterm[\s\S]*Docs[\s\S]*https:\/\/example\.test[\s\S]*echo ok/,
+);
+assert.doesNotThrow(() => portsApi.printPortInfo(welcomeBanner));
 assert.equal(portsApi.compareVersions('1.5.7', '1.5.5'), 2);
 assert.equal(portsApi.compareVersions('1.5.5', '1.5.5'), 0);
 assert.equal(portsApi.parseFpasotermVersion('fpasoterm 1.5.7 (commit abcdef)'), '1.5.7');

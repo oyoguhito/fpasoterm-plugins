@@ -66,6 +66,9 @@ function validatePort(port: Port): void {
   if (!fs.existsSync(sourcePath)) {
     throw new Error(`${port.manifestPath}: source file ${port.source} does not exist`);
   }
+  if (!fs.existsSync(path.join(port.directory, 'README.md'))) {
+    throw new Error(`${port.manifestPath}: README.md does not exist`);
+  }
   const installPath = path.normalize(port.installPath);
   if (installPath.startsWith(`..${path.sep}`) || installPath === '..') {
     throw new Error(`${port.manifestPath}: installPath must not escape User/plugins`);
@@ -85,6 +88,7 @@ function printUsage() {
   npm run ports -- index [--check]
   npm run ports -- sync
   npm run ports -- search <query>
+  npm run ports -- info <category/name>
   npm run ports -- check
   npm run ports -- compat [category/name[,category/name...]|all] [--fpasoterm <command>]
   npm run ports -- --help
@@ -240,6 +244,52 @@ function printPorts(ports) {
   }
 }
 
+const terminalStyle = {
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  cyan: '\x1b[36m',
+  dim: '\x1b[2m',
+  yellow: '\x1b[33m',
+};
+
+// Renders the small README subset used by ports without requiring a Markdown dependency.
+function formatMarkdownForTerminal(markdown) {
+  let fencedCode = false;
+  return markdown.replace(/\r\n?/g, '\n').split('\n').map((line) => {
+    if (/^```/.test(line)) {
+      fencedCode = !fencedCode;
+      return fencedCode ? `${terminalStyle.dim}--- code ---${terminalStyle.reset}` : `${terminalStyle.dim}------------${terminalStyle.reset}`;
+    }
+    if (fencedCode) {
+      return `${terminalStyle.yellow}${line}${terminalStyle.reset}`;
+    }
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      return `${terminalStyle.bold}${terminalStyle.cyan}${heading[2]}${terminalStyle.reset}`;
+    }
+    return line
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, `$1 ${terminalStyle.dim}<$2>${terminalStyle.reset}`)
+      .replace(/\*\*([^*]+)\*\*/g, `${terminalStyle.bold}$1${terminalStyle.reset}`)
+      .replace(/`([^`]+)`/g, `${terminalStyle.yellow}$1${terminalStyle.reset}`);
+  }).join('\n').trimEnd();
+}
+
+// Prints public port metadata and its human-oriented README without reading plugin source.
+function printPortInfo(port) {
+  validatePort(port);
+  const readmePath = path.join(port.directory, 'README.md');
+  const relativeReadmePath = path.relative(root, readmePath).replaceAll(path.sep, '/');
+  console.log(`${terminalStyle.bold}${port.id}${terminalStyle.reset}`);
+  console.log(`name: ${port.name}`);
+  console.log(`version: ${port.version}`);
+  console.log(`author: ${port.author}`);
+  console.log(`license: ${port.license}`);
+  console.log(`requires fpasoterm: >= ${port.minFpasotermVersion}`);
+  console.log(`install path: ${port.installPath}`);
+  console.log(`readme: ${relativeReadmePath}\n`);
+  console.log(formatMarkdownForTerminal(fs.readFileSync(readmePath, 'utf8')));
+}
+
 // Finds Windows command wrappers explicitly instead of relying on shell:true.
 function resolveWindowsCommand(command: string, environment = process.env): string {
   if (path.extname(command) || command.includes('/') || command.includes('\\')) {
@@ -386,6 +436,8 @@ function main() {
     if (matches.length === 0) {
       return 1;
     }
+  } else if (command === 'info' && identifier && rest.length === 0) {
+    printPortInfo(selectPort(identifier));
   } else if (command === 'check') {
     discoverPorts().forEach(validatePort);
     console.log(`checked ${discoverPorts().length} ports`);
@@ -421,6 +473,8 @@ module.exports = {
   assertPortIndexCurrent,
   syncCheckout,
   printPorts,
+  printPortInfo,
+  formatMarkdownForTerminal,
   parseFpasotermVersion,
   readFpasotermVersion,
   searchPorts,
