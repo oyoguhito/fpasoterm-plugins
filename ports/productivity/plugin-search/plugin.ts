@@ -1,34 +1,15 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.2.0
+// @fpasoterm-plugin version: 1.3.0
 // @fpasoterm-plugin description: Opens a searchable GUI catalog of official public plugin ports.
 
-// Provides a local catalog UI. Installation stays an explicit, reviewable fpasoterm CLI action.
+// Reads the official INDEX through fpasoterm. Installation remains an explicit CLI action.
 const api = window.fpasotermPluginApi;
 
-type PortEntry = {
-  id: string;
-  name: string;
-  author: string;
-  description: string;
-};
-
-const catalog: PortEntry[] = [
-  ['appearance/amber', 'amber', 'Applies an amber-on-charcoal terminal palette for a warm high-contrast appearance.'],
-  ['appearance/high-contrast', 'high-contrast', 'Applies a high-contrast palette for clearly separated terminal colors.'],
-  ['appearance/teal', 'teal', 'Applies a teal terminal palette with a translucent dark background.'],
-  ['productivity/git-status', 'git-status', 'Adds a Plugins menu action that inserts git status --short without executing it.'],
-  ['productivity/plugin-search', 'plugin-search', 'Opens a searchable GUI catalog of official public plugin ports.'],
-  ['productivity/session-marker', 'session-marker', 'Adds a Plugins menu action that writes a local timestamp marker for terminal logs.'],
-  ['terminal/hello', 'hello', 'Writes the minimal fpasoterm plugin confirmation after startup.'],
-  ['terminal/status-banner', 'status-banner', 'Adds a Plugins menu command that prints terminal status.'],
-  ['terminal/theme', 'theme', 'Applies the visible teal terminal palette from the fpasoterm example.'],
-  ['terminal/welcome-banner', 'welcome-banner', 'Prints a concise welcome message after the terminal is ready.'],
-].map(([id, name, description]) => ({ id, name, author: 'oyoguhito', description }));
-
-let overlay: HTMLDivElement | undefined;
-let searchInput: HTMLInputElement | undefined;
-let resultList: HTMLDivElement | undefined;
-let statusText: HTMLDivElement | undefined;
+let catalog = [];
+let overlay;
+let searchInput;
+let resultList;
+let statusText;
 
 // Closes the plugin-owned dialog and returns keyboard input to the terminal.
 function closeDialog() {
@@ -41,7 +22,7 @@ function closeDialog() {
 }
 
 // Creates a result row with an explicit command that the user can review before execution.
-function createResult(port: PortEntry): HTMLDivElement {
+function createResult(port) {
   const row = document.createElement('div');
   row.className = 'fpasoterm-port-search-result';
   const details = document.createElement('div');
@@ -70,14 +51,30 @@ function createResult(port: PortEntry): HTMLDivElement {
   return row;
 }
 
-// Filters the embedded catalog without fetching metadata or plugin source at runtime.
+// Filters the metadata returned by fpasoterm's fixed official INDEX endpoint.
 function renderResults() {
   if (!searchInput || !resultList || !statusText) return;
   const query = searchInput.value.trim().toLocaleLowerCase();
   const matches = catalog.filter((port) => [port.id, port.name, port.author, port.description]
     .some((value) => value.toLocaleLowerCase().includes(query)));
   resultList.replaceChildren(...matches.map(createResult));
-  statusText.textContent = `${matches.length} ${matches.length === 1 ? 'port' : 'ports'} found`;
+  statusText.textContent = `${matches.length} ${matches.length === 1 ? 'port' : 'ports'} found from official INDEX`;
+}
+
+// Refreshes metadata only when the dialog opens; plugin source is never downloaded here.
+async function refreshCatalog() {
+  if (!statusText || !resultList) return;
+  statusText.textContent = 'Loading official INDEX...';
+  resultList.replaceChildren();
+  try {
+    const entries = await api.getOfficialPluginIndex();
+    catalog = Array.isArray(entries) ? entries : [];
+    renderResults();
+    api.log(`productivity/plugin-search loaded ${catalog.length} ports from official INDEX`);
+  } catch (error) {
+    statusText.textContent = 'Could not load the official INDEX. Check the network and try again.';
+    api.log(`productivity/plugin-search INDEX load failed: ${String(error)}`);
+  }
 }
 
 // Opens one accessible overlay and keeps it constrained to the fpasoterm renderer viewport.
@@ -139,9 +136,9 @@ function openDialog() {
   card.append(header, searchInput, statusText, resultList);
   overlay.append(style, card);
   document.body.append(overlay);
-  renderResults();
+  void refreshCatalog();
   searchInput.focus();
 }
 
-api.log(`productivity/plugin-search loaded with ${catalog.length} bundled ports`);
+api.log('productivity/plugin-search loaded; the official INDEX is fetched when opened');
 api.registerCommand('plugin-search.open', 'Search Plugin Ports', openDialog);

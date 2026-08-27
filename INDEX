@@ -2,7 +2,7 @@ appearance/amber|amber|1.0.0|oyoguhito|Applies an amber-on-charcoal terminal pal
 appearance/high-contrast|high-contrast|1.0.0|oyoguhito|Applies a high-contrast palette for clearly separated terminal colors.|MIT|1.5.5|appearance/high-contrast.ts
 appearance/teal|teal|1.0.0|oyoguhito|Applies a teal terminal palette with a translucent dark background.|MIT|1.5.5|appearance/teal.ts
 productivity/git-status|git-status|1.0.0|oyoguhito|Adds a Plugins menu action that inserts git status --short without executing it.|MIT|1.5.5|productivity/git-status.ts
-productivity/plugin-search|plugin-search|1.2.0|oyoguhito|Opens a searchable GUI catalog of official public plugin ports.|MIT|1.5.11|productivity/plugin-search.ts
+productivity/plugin-search|plugin-search|1.3.0|oyoguhito|Opens a searchable GUI catalog of official public plugin ports.|MIT|1.5.12|productivity/plugin-search.ts
 productivity/session-marker|session-marker|1.0.0|oyoguhito|Adds a Plugins menu action that writes a local timestamp marker for terminal logs.|MIT|1.5.5|productivity/session-marker.ts
 terminal/hello|hello|1.0.0|oyoguhito|Writes the minimal fpasoterm plugin confirmation after startup.|MIT|1.5.5|terminal/hello.ts
 terminal/status-banner|status-banner|1.0.0|oyoguhito|Adds a Plugins menu command that prints terminal status.|MIT|1.5.5|terminal/status-banner.ts

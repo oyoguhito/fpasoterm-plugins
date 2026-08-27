@@ -43,6 +43,13 @@ assert.deepEqual(portsApi.searchPorts('session').map((port) => port.id), [
 ]);
 assert.deepEqual(portsApi.searchPorts('search').map((port) => port.id), ['productivity/plugin-search']);
 assert.equal(portsApi.searchPorts('oyoguhito').length, 10);
+const pluginSearchSource = fs.readFileSync(
+  path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),
+  'utf8',
+);
+assert.match(pluginSearchSource, /getOfficialPluginIndex/);
+assert.doesNotMatch(pluginSearchSource, /bundled ports|const catalog:\s*PortEntry/);
+assert.doesNotThrow(() => new Function(pluginSearchSource));
 assert.match(
   portsApi.formatMarkdownForTerminal('# Title\n\nUse **fpasoterm**.\n[Docs](https://example.test)\n```sh\necho ok\n```'),
   /Title[\s\S]*fpasoterm[\s\S]*Docs[\s\S]*https:\/\/example\.test[\s\S]*echo ok/,
@@ -69,7 +76,7 @@ assert.throws(
   /requires fpasoterm >= 1.5.5/,
 );
 portsApi.assertCompatible(welcomeBanner, '1.5.7');
-ports.forEach((port) => portsApi.assertCompatible(port, '1.5.11'));
+ports.forEach((port) => portsApi.assertCompatible(port, '1.5.12'));
 assert.throws(
   () => portsApi.validatePort({ ...welcomeBanner, author: 'person@example.com' }),
   /must be a public name or GitHub account/,
