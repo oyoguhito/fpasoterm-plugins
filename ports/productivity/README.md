@@ -3,6 +3,7 @@
 Local workflow helpers such as terminal commands and log markers.
 
 - `git-status`: inserts an editable `git status --short` command.
+- `clipboard-translate`: opens a clipboard translation panel and explicitly opens Google Translate or another translation website.
 - `plugin-search`: opens a local GUI catalog and copies explicit public port install commands.
 - `session-marker`: writes a timestamp separator for terminal output logs.
 

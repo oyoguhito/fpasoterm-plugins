@@ -10,7 +10,7 @@ assert.doesNotMatch(portsSource, /command === 'install'/);
 assert.doesNotMatch(portsSource, /command === 'update'/);
 assert.doesNotMatch(portsSource, /command === 'uninstall'/);
 const ports = portsApi.discoverPorts();
-assert.equal(portsApi.readPortIndex().length, 10);
+assert.equal(portsApi.readPortIndex().length, 11);
 for (const identifier of [
   'appearance/amber',
   'terminal/hello',
@@ -21,6 +21,7 @@ for (const identifier of [
   'appearance/high-contrast',
   'productivity/git-status',
   'productivity/plugin-search',
+  'productivity/clipboard-translate',
   'productivity/session-marker',
 ]) {
   assert.ok(ports.some((port) => port.id === identifier));
@@ -31,7 +32,7 @@ assert.deepEqual(
   portsApi.selectPorts('terminal/hello,terminal/welcome-banner').map((port) => port.id),
   ['terminal/hello', 'terminal/welcome-banner'],
 );
-assert.equal(portsApi.selectPorts('all', true).length, 10);
+assert.equal(portsApi.selectPorts('all', true).length, 11);
 assert.throws(() => portsApi.selectPorts('all,terminal/hello', true), /must be used alone/);
 assert.deepEqual(
   portsApi.searchPorts('WELCOME').map((port) => port.id),
@@ -42,7 +43,8 @@ assert.deepEqual(portsApi.searchPorts('session').map((port) => port.id), [
   'productivity/session-marker',
 ]);
 assert.deepEqual(portsApi.searchPorts('search').map((port) => port.id), ['productivity/plugin-search']);
-assert.equal(portsApi.searchPorts('oyoguhito').length, 10);
+assert.deepEqual(portsApi.searchPorts('translate').map((port) => port.id), ['productivity/clipboard-translate']);
+assert.equal(portsApi.searchPorts('oyoguhito').length, 11);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),
   'utf8',
@@ -76,13 +78,13 @@ assert.throws(
   /requires fpasoterm >= 1.5.5/,
 );
 portsApi.assertCompatible(welcomeBanner, '1.5.7');
-ports.forEach((port) => portsApi.assertCompatible(port, '1.5.12'));
+ports.forEach((port) => portsApi.assertCompatible(port, port.minFpasotermVersion));
 assert.throws(
   () => portsApi.validatePort({ ...welcomeBanner, author: 'person@example.com' }),
   /must be a public name or GitHub account/,
 );
 ports.forEach(portsApi.validatePort);
-assert.equal(ports.length, 10);
+assert.equal(ports.length, 11);
 assert.doesNotThrow(() => portsApi.assertPortIndexCurrent());
 assert.equal(portsApi.normalizeIndexLineEndings('one\r\ntwo\rthree\n'), 'one\ntwo\nthree\n');
 assert.equal(typeof portsApi.syncCheckout, 'function');

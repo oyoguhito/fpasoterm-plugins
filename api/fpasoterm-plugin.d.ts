@@ -31,6 +31,12 @@ type FpasotermPluginApi = {
     };
   };
   log: (message: string) => void;
+  /** Reads plain UTF-8 text from the native system clipboard. */
+  readClipboard: () => Promise<string>;
+  /** Writes plain UTF-8 text to the native system clipboard. */
+  writeClipboard: (text: string) => Promise<void>;
+  /** Opens an HTTP(S) URL in the external browser after an explicit user action. */
+  openExternalUrl: (url: string) => Promise<void>;
   onReady: (callback: () => void) => void;
   registerCommand: (
     id: string,
