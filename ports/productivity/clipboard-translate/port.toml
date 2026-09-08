@@ -1,0 +1,10 @@
+[port]
+id = "productivity/clipboard-translate"
+name = "clipboard-translate"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Opens a clipboard translation panel for Google Translate or another translation website."
+license = "MIT"
+minFpasotermVersion = "1.6.2"
+source = "plugin.ts"
+installPath = "productivity/clipboard-translate.ts"
