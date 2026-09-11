@@ -19,6 +19,9 @@ imports so an arbitrary WebAssembly file cannot request additional host APIs.
 before building or distributing an engine. A structurally valid IWAD does not
 prove ownership, compatibility, or redistribution permission.
 
+The selected engine limit is 16 MiB and the IWAD limit is 64 MiB. Both limits
+apply before bytes are read into memory.
+
 ## Install
 
 Requires fpasoterm 1.6.3 or later.

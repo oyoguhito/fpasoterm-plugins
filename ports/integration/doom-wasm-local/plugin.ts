@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.0
+// @fpasoterm-plugin version: 1.0.1
 // @fpasoterm-plugin description: Runs a user-selected Doom WebAssembly engine and user-owned IWAD in a local canvas.
 
 const api = window.fpasotermPluginApi;
@@ -62,7 +62,7 @@ api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
     selecting = true;
     try {
       if (!engine) {
-        const asset = await api.selectLocalAsset({ accept: ['.wasm', 'application/wasm'], maxBytes: 4 * 1024 * 1024 });
+        const asset = await api.selectLocalAsset({ accept: ['.wasm', 'application/wasm'], maxBytes: 16 * 1024 * 1024 });
         if (!asset) return;
         const module = await WebAssembly.compile(asset.bytes);
         validateEngine(module);

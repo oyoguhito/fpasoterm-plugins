@@ -75,6 +75,7 @@ assert.match(doomWasmSource, /validateEngine/);
 assert.match(doomWasmSource, /requiredImports/);
 assert.match(doomWasmSource, /gameSaving: \{ sizeOfSaveGame: \(\) => 0/);
 assert.match(doomWasmSource, /selectLocalAsset/);
+assert.match(doomWasmSource, /maxBytes: 16 \* 1024 \* 1024/);
 assert.doesNotMatch(doomWasmSource, /\bfetch\s*\(|openExternalUrl|localStorage|sessionStorage|\.path\b/);
 assert.doesNotThrow(() => new Function(doomWasmSource));
 const pluginSearchSource = fs.readFileSync(
