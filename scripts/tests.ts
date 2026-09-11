@@ -85,7 +85,8 @@ assert.match(doomWasmSource, /Enter: 'KEY_ENTER', Escape: 'KEY_ESCAPE'/);
 assert.match(doomWasmSource, /if \(inputKey === ' ' && exports\.KEY_ENTER instanceof WebAssembly\.Global\)/);
 assert.match(doomWasmSource, /event\.stopPropagation\(\)/);
 assert.match(doomWasmSource, /document\.activeElement !== canvas/);
-assert.match(doomWasmSource, /confirmClose: true/);
+assert.doesNotMatch(doomWasmSource, /confirmClose/);
+assert.match(doomWasmSource, /call_indirect to a signature that does not match/);
 assert.doesNotMatch(doomWasmSource, /\bfetch\s*\(|openExternalUrl|localStorage|sessionStorage|\.path\b/);
 assert.doesNotThrow(() => new Function(doomWasmSource));
 const pluginSearchSource = fs.readFileSync(

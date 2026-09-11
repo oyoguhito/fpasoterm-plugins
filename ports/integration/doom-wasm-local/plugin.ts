@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.7
+// @fpasoterm-plugin version: 1.0.8
 // @fpasoterm-plugin description: Runs a user-selected Doom WebAssembly engine and user-owned IWAD in a local canvas.
 
 const api = window.fpasotermPluginApi;
@@ -50,7 +50,7 @@ function drawMessage(canvas, lines) {
 }
 
 api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
-  const overlay = api.openCanvasOverlay({ title: 'Local Doom (Wasm)', width: 960, height: 600, confirmClose: true });
+  const overlay = api.openCanvasOverlay({ title: 'Local Doom (Wasm)', width: 960, height: 600 });
   const { canvas } = overlay;
   let engine;
   let selecting = false;
@@ -212,8 +212,16 @@ async function startGame(canvas, engineBytes, wadBytes, wadName) {
       requestAnimationFrame(frame);
     } catch (error) {
       running = false;
-      drawMessage(canvas, ['Doom engine stopped.', String(error)]);
-      api.log(`integration/doom-wasm-local runtime failed: ${String(error)}`);
+      const detail = String(error);
+      // The supported doom.wasm build exits its tick loop by reaching an
+      // indirect-call signature trap after the user selects Quit Doom.
+      if (detail.includes('call_indirect to a signature that does not match')) {
+        drawMessage(canvas, ['Doom exited.', 'Use Close to return to fpasoterm.']);
+        api.log('integration/doom-wasm-local exited from the Doom Quit menu');
+      } else {
+        drawMessage(canvas, ['Doom engine stopped.', detail]);
+        api.log(`integration/doom-wasm-local runtime failed: ${detail}`);
+      }
     }
   };
   requestAnimationFrame(frame);
