@@ -59,6 +59,7 @@ assert.match(doomWadInspectorSource, /selectLocalAsset/);
 assert.match(doomWadInspectorSource, /maxBytes: 64 \* 1024 \* 1024/);
 assert.match(doomWadInspectorSource, /crypto\.subtle\.digest\('SHA-256'/);
 assert.match(doomWadInspectorSource, /kind !== 'IWAD' && kind !== 'PWAD'/);
+assert.match(doomWadInspectorSource, /printableHeader/);
 assert.doesNotMatch(doomWadInspectorSource, /\bfetch\s*\(/);
 assert.doesNotMatch(doomWadInspectorSource, /openExternalUrl/);
 assert.doesNotMatch(doomWadInspectorSource, /localStorage|sessionStorage|\.path\b/);

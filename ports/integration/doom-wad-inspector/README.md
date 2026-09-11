@@ -3,6 +3,8 @@
 This plugin lets you explicitly choose one local Doom-format WAD file and
 validates it entirely in fpasoterm's renderer. It displays the WAD kind, lump
 count, selected standard Doom lumps, and SHA-256 fingerprint in a canvas modal.
+An eligible base file begins with the ASCII bytes `IWAD`; `PWAD` is a mod and
+is reported separately rather than accepted as the base game data.
 
 It is an asset-inspection foundation for a future Doom engine integration; it
 does not include, download, launch, or modify a game engine, WAD, save file, or

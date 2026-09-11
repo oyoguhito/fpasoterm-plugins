@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.0
+// @fpasoterm-plugin version: 1.0.1
 // @fpasoterm-plugin description: Validates one explicitly selected Doom IWAD locally and shows its metadata and SHA-256.
 
 const api = window.fpasotermPluginApi;
@@ -13,11 +13,19 @@ function hex(bytes) {
   return [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
+function printableHeader(bytes) {
+  return [...bytes.subarray(0, 4)].map((value) => (
+    value >= 0x20 && value <= 0x7e ? String.fromCharCode(value) : `\\x${value.toString(16).padStart(2, '0')}`
+  )).join('');
+}
+
 async function inspectWad(buffer) {
   const bytes = new Uint8Array(buffer);
   if (bytes.byteLength < 12) throw new Error('file is smaller than a WAD header');
   const kind = textDecoder.decode(bytes.subarray(0, 4));
-  if (kind !== 'IWAD' && kind !== 'PWAD') throw new Error('header is not IWAD or PWAD');
+  if (kind !== 'IWAD' && kind !== 'PWAD') {
+    throw new Error(`header is "${printableHeader(bytes)}", not IWAD or PWAD`);
+  }
   const view = new DataView(buffer);
   const lumpCount = view.getInt32(4, true);
   const directoryOffset = view.getInt32(8, true);
