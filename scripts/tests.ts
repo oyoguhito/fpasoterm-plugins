@@ -62,6 +62,10 @@ assert.match(doomWadInspectorSource, /kind !== 'IWAD' && kind !== 'PWAD'/);
 assert.doesNotMatch(doomWadInspectorSource, /\bfetch\s*\(/);
 assert.doesNotMatch(doomWadInspectorSource, /openExternalUrl/);
 assert.doesNotMatch(doomWadInspectorSource, /localStorage|sessionStorage|\.path\b/);
+// The native fpasoterm launcher evaluates installed .ts ports as browser
+// scripts. Keep these source files JavaScript-compatible until it transpiles
+// TypeScript itself.
+assert.doesNotThrow(() => new Function(doomWadInspectorSource));
 const doomWasmSource = fs.readFileSync(
   path.join(root, 'ports', 'integration', 'doom-wasm-local', 'plugin.ts'),
   'utf8',
@@ -72,6 +76,7 @@ assert.match(doomWasmSource, /requiredImports/);
 assert.match(doomWasmSource, /gameSaving: \{ sizeOfSaveGame: \(\) => 0/);
 assert.match(doomWasmSource, /selectLocalAsset/);
 assert.doesNotMatch(doomWasmSource, /\bfetch\s*\(|openExternalUrl|localStorage|sessionStorage|\.path\b/);
+assert.doesNotThrow(() => new Function(doomWasmSource));
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),
   'utf8',

@@ -11,16 +11,7 @@ const requiredImports = new Set([
 ]);
 const requiredExports = ['initGame', 'reportKeyDown', 'reportKeyUp', 'tickGame', 'memory'];
 
-type DoomExports = {
-  memory: WebAssembly.Memory;
-  initGame: () => void;
-  tickGame: () => void;
-  reportKeyDown: (key: number) => void;
-  reportKeyUp: (key: number) => void;
-  [name: string]: WebAssembly.ExportValue;
-};
-
-function inspectIwad(bytes: ArrayBuffer) {
+function inspectIwad(bytes) {
   const data = new Uint8Array(bytes);
   if (data.byteLength < 12 || new TextDecoder('ascii').decode(data.subarray(0, 4)) !== 'IWAD') {
     throw new Error('select a base IWAD file');
@@ -33,7 +24,7 @@ function inspectIwad(bytes: ArrayBuffer) {
   }
 }
 
-function validateEngine(module: WebAssembly.Module) {
+function validateEngine(module) {
   const imports = WebAssembly.Module.imports(module);
   const importsSeen = new Set(imports.map((entry) => `${entry.module}.${entry.name}`));
   if (imports.length !== requiredImports.size || importsSeen.size !== requiredImports.size
@@ -47,7 +38,7 @@ function validateEngine(module: WebAssembly.Module) {
   }
 }
 
-function drawMessage(canvas: HTMLCanvasElement, lines: string[]) {
+function drawMessage(canvas, lines) {
   const context = canvas.getContext('2d');
   if (!context) return;
   context.fillStyle = '#101820';
@@ -61,7 +52,7 @@ function drawMessage(canvas: HTMLCanvasElement, lines: string[]) {
 api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
   const overlay = api.openCanvasOverlay({ title: 'Local Doom (Wasm)', width: 960, height: 600 });
   const { canvas } = overlay;
-  let engine: ArrayBuffer | undefined;
+  let engine;
   let selecting = false;
   let gameStarted = false;
   drawMessage(canvas, ['Click, Enter, or Space to select a GPL-compatible doom.wasm engine.', 'Escape closes. No file path, save data, or network access is used.']);
@@ -100,16 +91,16 @@ api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
   });
 });
 
-async function startGame(canvas: HTMLCanvasElement, engineBytes: ArrayBuffer, wadBytes: ArrayBuffer, wadName: string) {
+async function startGame(canvas, engineBytes, wadBytes, wadName) {
   const wad = new Uint8Array(wadBytes);
   const context = canvas.getContext('2d');
   if (!context) throw new Error('canvas is unavailable');
-  let exports: DoomExports;
+  let exports;
   let width = 320;
   let height = 200;
-  let image: ImageData | undefined;
+  let image;
   let running = true;
-  const readText = (pointer: number, length: number) => {
+  const readText = (pointer, length) => {
     if (!exports || pointer < 0 || length < 0 || pointer > exports.memory.buffer.byteLength - length) return '';
     return new TextDecoder().decode(new Uint8Array(exports.memory.buffer, pointer, length));
   };
@@ -117,7 +108,7 @@ async function startGame(canvas: HTMLCanvasElement, engineBytes: ArrayBuffer, wa
   validateEngine(module);
   const instance = await WebAssembly.instantiate(module, {
     loading: {
-      onGameInit: (nextWidth: number, nextHeight: number) => {
+      onGameInit: (nextWidth, nextHeight) => {
         width = nextWidth;
         height = nextHeight;
         if (width <= 0 || height <= 0 || width * height > 1_000_000) throw new Error('engine requested an unsafe frame size');
@@ -125,12 +116,12 @@ async function startGame(canvas: HTMLCanvasElement, engineBytes: ArrayBuffer, wa
         canvas.height = height;
         image = context.createImageData(width, height);
       },
-      wadSizes: (countPointer: number, sizePointer: number) => {
+      wadSizes: (countPointer, sizePointer) => {
         const memory = new DataView(exports.memory.buffer);
         memory.setInt32(countPointer, 1, true);
         memory.setInt32(sizePointer, wad.byteLength, true);
       },
-      readWads: (destination: number, lengths: number) => {
+      readWads: (destination, lengths) => {
         const memory = new Uint8Array(exports.memory.buffer);
         if (destination < 0 || wad.byteLength > memory.byteLength - destination || lengths < 0 || lengths > memory.byteLength - 4) {
           throw new Error('engine supplied an invalid WAD memory range');
@@ -141,7 +132,7 @@ async function startGame(canvas: HTMLCanvasElement, engineBytes: ArrayBuffer, wa
     },
     runtimeControl: { timeInMilliseconds: () => BigInt(Math.floor(performance.now())) },
     ui: {
-      drawFrame: (pointer: number) => {
+      drawFrame: (pointer) => {
         if (!image || pointer < 0 || width * height * 4 > exports.memory.buffer.byteLength - pointer) return;
         const source = new Uint8ClampedArray(exports.memory.buffer, pointer, width * height * 4);
         for (let index = 0; index < source.length; index += 4) {
@@ -155,23 +146,23 @@ async function startGame(canvas: HTMLCanvasElement, engineBytes: ArrayBuffer, wa
     },
     gameSaving: { sizeOfSaveGame: () => 0, readSaveGame: () => 0, writeSaveGame: () => 0 },
     console: {
-      onInfoMessage: (pointer: number, length: number) => api.log(`doom: ${readText(pointer, length)}`),
-      onErrorMessage: (pointer: number, length: number) => api.log(`doom error: ${readText(pointer, length)}`),
+      onInfoMessage: (pointer, length) => api.log(`doom: ${readText(pointer, length)}`),
+      onErrorMessage: (pointer, length) => api.log(`doom error: ${readText(pointer, length)}`),
     },
   });
-  exports = instance.exports as unknown as DoomExports;
+  exports = instance.exports;
   exports.initGame();
   api.log(`integration/doom-wasm-local started ${wadName}; saves are disabled`);
-  const specialKey = (event: KeyboardEvent) => {
-    const names: Record<string, string> = {
+  const specialKey = (event) => {
+    const names = {
       ArrowLeft: 'KEY_LEFTARROW', ArrowRight: 'KEY_RIGHTARROW', ArrowUp: 'KEY_UPARROW', ArrowDown: 'KEY_DOWNARROW',
       Control: 'KEY_FIRE', ' ': 'KEY_USE', Shift: 'KEY_SHIFT', Alt: 'KEY_ALT', Backspace: 'KEY_BACKSPACE',
     };
     const name = names[event.key];
-    if (name && exports[name] instanceof WebAssembly.Global) return (exports[name] as WebAssembly.Global).value as number;
+    if (name && exports[name] instanceof WebAssembly.Global) return exports[name].value;
     return event.key.length === 1 && event.key.charCodeAt(0) >= 32 && event.key.charCodeAt(0) <= 126 ? event.key.toLowerCase().charCodeAt(0) : undefined;
   };
-  const sendKey = (down: boolean) => (event: KeyboardEvent) => {
+  const sendKey = (down) => (event) => {
     const key = specialKey(event);
     if (key === undefined || !canvas.isConnected) return;
     event.preventDefault();

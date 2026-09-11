@@ -5,23 +5,15 @@
 const api = window.fpasotermPluginApi;
 const textDecoder = new TextDecoder('ascii');
 
-type WadInfo = {
-  kind: string;
-  lumpCount: number;
-  directoryOffset: number;
-  standardLumps: string[];
-  sha256: string;
-};
-
-function wadName(bytes: Uint8Array, offset: number) {
+function wadName(bytes, offset) {
   return textDecoder.decode(bytes.subarray(offset, offset + 8)).replace(/\0+$/, '').trim();
 }
 
-function hex(bytes: Uint8Array) {
+function hex(bytes) {
   return [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
-async function inspectWad(buffer: ArrayBuffer): Promise<WadInfo> {
+async function inspectWad(buffer) {
   const bytes = new Uint8Array(buffer);
   if (bytes.byteLength < 12) throw new Error('file is smaller than a WAD header');
   const kind = textDecoder.decode(bytes.subarray(0, 4));
@@ -33,7 +25,7 @@ async function inspectWad(buffer: ArrayBuffer): Promise<WadInfo> {
   if (directoryOffset < 12 || directoryOffset > bytes.byteLength) throw new Error('invalid directory offset');
   const directoryLength = lumpCount * 16;
   if (directoryLength > bytes.byteLength - directoryOffset) throw new Error('directory extends beyond the file');
-  const names = new Set<string>();
+  const names = new Set();
   for (let index = 0; index < lumpCount; index += 1) {
     const offset = directoryOffset + index * 16;
     const lumpOffset = view.getInt32(offset, true);
@@ -57,7 +49,7 @@ async function inspectWad(buffer: ArrayBuffer): Promise<WadInfo> {
   };
 }
 
-function drawLines(canvas: HTMLCanvasElement, lines: string[]) {
+function drawLines(canvas, lines) {
   const context = canvas.getContext('2d');
   if (!context) return;
   context.fillStyle = '#101820';
