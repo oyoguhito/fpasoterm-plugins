@@ -78,6 +78,8 @@ assert.match(doomWasmSource, /gameSaving: \{ sizeOfSaveGame: \(\) => 0/);
 assert.match(doomWasmSource, /selectLocalAsset/);
 assert.match(doomWasmSource, /maxBytes: 16 \* 1024 \* 1024/);
 assert.match(doomWasmSource, /selectionStage/);
+assert.match(doomWasmSource, /image\.data\[index \+ 3\] = 255/);
+assert.match(doomWasmSource, /Waiting for the first rendered frame/);
 assert.doesNotMatch(doomWasmSource, /\bfetch\s*\(|openExternalUrl|localStorage|sessionStorage|\.path\b/);
 assert.doesNotThrow(() => new Function(doomWasmSource));
 const pluginSearchSource = fs.readFileSync(

@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.1
+// @fpasoterm-plugin version: 1.0.2
 // @fpasoterm-plugin description: Runs a user-selected Doom WebAssembly engine and user-owned IWAD in a local canvas.
 
 const api = window.fpasotermPluginApi;
@@ -124,6 +124,7 @@ async function startGame(canvas, engineBytes, wadBytes, wadName) {
         canvas.width = width;
         canvas.height = height;
         image = context.createImageData(width, height);
+        drawMessage(canvas, ['Doom initialized. Waiting for the first rendered frame...']);
       },
       wadSizes: (countPointer, sizePointer) => {
         const memory = new DataView(exports.memory.buffer);
@@ -148,7 +149,9 @@ async function startGame(canvas, engineBytes, wadBytes, wadName) {
           image.data[index] = source[index + 2];
           image.data[index + 1] = source[index + 1];
           image.data[index + 2] = source[index];
-          image.data[index + 3] = source[index + 3];
+          // doom.wasm supplies BGR color bytes. Its alpha byte is not part of
+          // the visible Doom framebuffer contract, so make every pixel opaque.
+          image.data[index + 3] = 255;
         }
         context.putImageData(image, 0, 0);
       },
