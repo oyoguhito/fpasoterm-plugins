@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.3
+// @fpasoterm-plugin version: 1.0.5
 // @fpasoterm-plugin description: Runs a user-selected Doom WebAssembly engine and user-owned IWAD in a local canvas.
 
 const api = window.fpasotermPluginApi;
@@ -50,13 +50,13 @@ function drawMessage(canvas, lines) {
 }
 
 api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
-  const overlay = api.openCanvasOverlay({ title: 'Local Doom (Wasm)', width: 960, height: 600 });
+  const overlay = api.openCanvasOverlay({ title: 'Local Doom (Wasm)', width: 960, height: 600, confirmClose: true });
   const { canvas } = overlay;
   let engine;
   let selecting = false;
   let gameStarted = false;
   let selectionStage = 'selecting a doom.wasm engine';
-  drawMessage(canvas, ['Click, Enter, or Space to select a GPL-compatible doom.wasm engine.', 'Escape closes. No file path, save data, or network access is used.']);
+  drawMessage(canvas, ['Click, Enter, or Space to select a GPL-compatible doom.wasm engine.', 'Use Close to exit. No file path, save data, or network access is used.']);
 
   const selectAsset = async () => {
     if (selecting || gameStarted) return;
@@ -181,8 +181,12 @@ async function startGame(canvas, engineBytes, wadBytes, wadName) {
   };
   const sendKey = (down) => (event) => {
     const key = specialKey(event);
-    if (key === undefined || !canvas.isConnected) return;
+    // Let the overlay's confirmation controls receive their own keyboard input.
+    if (key === undefined || !canvas.isConnected || document.activeElement !== canvas) return;
     event.preventDefault();
+    // This listener runs during capture. Stop mapped Doom controls (especially
+    // Escape) before the canvas modal's general keyboard handler can close it.
+    event.stopPropagation();
     (down ? exports.reportKeyDown : exports.reportKeyUp)(key);
   };
   const onKeyDown = sendKey(true);

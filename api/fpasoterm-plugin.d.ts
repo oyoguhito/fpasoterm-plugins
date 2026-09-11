@@ -51,11 +51,12 @@ type FpasotermPluginApi = {
     size: number;
     bytes: ArrayBuffer;
   } | null>;
-  /** Opens a focus-trapped canvas modal. */
+  /** Opens a focus-trapped canvas modal; `confirmClose` asks before closing. */
   openCanvasOverlay: (options?: {
     title?: string;
     width?: number;
     height?: number;
+    confirmClose?: boolean;
   }) => {
     canvas: HTMLCanvasElement;
     close: () => void;
