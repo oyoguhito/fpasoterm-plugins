@@ -1,0 +1,10 @@
+[port]
+id = "integration/doom-wasm-local"
+name = "doom-wasm-local"
+version = "1.0.8"
+author = "oyoguhito"
+description = "Runs a user-selected GPL Doom WebAssembly engine and user-owned IWAD in a local canvas."
+license = "MIT"
+minFpasotermVersion = "1.6.3"
+source = "plugin.ts"
+installPath = "integration/doom-wasm-local.ts"

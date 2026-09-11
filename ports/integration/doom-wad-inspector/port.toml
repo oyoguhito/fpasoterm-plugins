@@ -1,0 +1,10 @@
+[port]
+id = "integration/doom-wad-inspector"
+name = "doom-wad-inspector"
+version = "1.0.1"
+author = "oyoguhito"
+description = "Validates a user-selected Doom IWAD locally and displays its metadata and SHA-256."
+license = "MIT"
+minFpasotermVersion = "1.6.3"
+source = "plugin.ts"
+installPath = "integration/doom-wad-inspector.ts"
