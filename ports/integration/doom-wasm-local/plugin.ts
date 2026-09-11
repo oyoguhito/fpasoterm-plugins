@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.5
+// @fpasoterm-plugin version: 1.0.6
 // @fpasoterm-plugin description: Runs a user-selected Doom WebAssembly engine and user-owned IWAD in a local canvas.
 
 const api = window.fpasotermPluginApi;
@@ -173,6 +173,7 @@ async function startGame(canvas, engineBytes, wadBytes, wadName) {
         : event.key;
     const names = {
       ArrowLeft: 'KEY_LEFTARROW', ArrowRight: 'KEY_RIGHTARROW', ArrowUp: 'KEY_UPARROW', ArrowDown: 'KEY_DOWNARROW',
+      Enter: 'KEY_ENTER', Escape: 'KEY_ESCAPE',
       Control: 'KEY_FIRE', ' ': 'KEY_USE', Shift: 'KEY_SHIFT', Alt: 'KEY_ALT', Backspace: 'KEY_BACKSPACE',
     };
     const name = names[inputKey];

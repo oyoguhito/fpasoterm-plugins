@@ -81,6 +81,7 @@ assert.match(doomWasmSource, /selectionStage/);
 assert.match(doomWasmSource, /image\.data\[index \+ 3\] = 255/);
 assert.match(doomWasmSource, /Waiting for the first rendered frame/);
 assert.match(doomWasmSource, /event\.code === 'Enter' \|\| event\.code === 'NumpadEnter'/);
+assert.match(doomWasmSource, /Enter: 'KEY_ENTER', Escape: 'KEY_ESCAPE'/);
 assert.match(doomWasmSource, /event\.stopPropagation\(\)/);
 assert.match(doomWasmSource, /document\.activeElement !== canvas/);
 assert.match(doomWasmSource, /confirmClose: true/);
