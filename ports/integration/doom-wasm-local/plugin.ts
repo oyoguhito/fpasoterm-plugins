@@ -55,6 +55,7 @@ api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
   let engine;
   let selecting = false;
   let gameStarted = false;
+  let selectionStage = 'selecting a doom.wasm engine';
   drawMessage(canvas, ['Click, Enter, or Space to select a GPL-compatible doom.wasm engine.', 'Escape closes. No file path, save data, or network access is used.']);
 
   const selectAsset = async () => {
@@ -62,6 +63,7 @@ api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
     selecting = true;
     try {
       if (!engine) {
+        selectionStage = 'validating the doom.wasm engine';
         const asset = await api.selectLocalAsset({ accept: ['.wasm', 'application/wasm'], maxBytes: 16 * 1024 * 1024 });
         if (!asset) return;
         const module = await WebAssembly.compile(asset.bytes);
@@ -70,14 +72,21 @@ api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
         drawMessage(canvas, ['Validated doom.wasm interface.', 'Click, Enter, or Space to select your base IWAD.']);
         return;
       }
+      selectionStage = 'reading the selected IWAD';
       const wad = await api.selectLocalAsset({ accept: ['.wad', 'application/octet-stream'], maxBytes: 64 * 1024 * 1024 });
       if (!wad) return;
       inspectIwad(wad.bytes);
+      selectionStage = 'initializing Doom with the selected IWAD';
       await startGame(canvas, engine, wad.bytes, wad.name);
       gameStarted = true;
     } catch (error) {
-      drawMessage(canvas, ['Could not start local Doom.', String(error), '', 'Click, Enter, or Space to try again.']);
-      api.log(`integration/doom-wasm-local failed: ${String(error)}`);
+      drawMessage(canvas, [
+        `Could not start local Doom while ${selectionStage}.`,
+        String(error),
+        '',
+        'Click, Enter, or Space to try again. The selected files remain in memory only.',
+      ]);
+      api.log(`integration/doom-wasm-local failed while ${selectionStage}: ${String(error)}`);
     } finally {
       selecting = false;
     }
