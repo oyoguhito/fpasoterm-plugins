@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.6
+// @fpasoterm-plugin version: 1.0.7
 // @fpasoterm-plugin description: Runs a user-selected Doom WebAssembly engine and user-owned IWAD in a local canvas.
 
 const api = window.fpasotermPluginApi;
@@ -165,7 +165,7 @@ async function startGame(canvas, engineBytes, wadBytes, wadName) {
   exports = instance.exports;
   exports.initGame();
   api.log(`integration/doom-wasm-local started ${wadName}; saves are disabled`);
-  const specialKey = (event) => {
+  const specialKeys = (event) => {
     // Physical codes keep decision keys working on IME and non-US layouts
     // where KeyboardEvent.key can be Process or another layout-specific value.
     const inputKey = event.code === 'Enter' || event.code === 'NumpadEnter' ? 'Enter'
@@ -177,18 +177,24 @@ async function startGame(canvas, engineBytes, wadBytes, wadName) {
       Control: 'KEY_FIRE', ' ': 'KEY_USE', Shift: 'KEY_SHIFT', Alt: 'KEY_ALT', Backspace: 'KEY_BACKSPACE',
     };
     const name = names[inputKey];
-    if (name && exports[name] instanceof WebAssembly.Global) return exports[name].value;
-    return inputKey.length === 1 && inputKey.charCodeAt(0) >= 32 && inputKey.charCodeAt(0) <= 126 ? inputKey.toLowerCase().charCodeAt(0) : undefined;
+    if (name && exports[name] instanceof WebAssembly.Global) {
+      const keys = [exports[name].value];
+      // Doom's title menu confirms with Enter, while gameplay uses Space.
+      // Deliver both for Space so either context can consume its own key.
+      if (inputKey === ' ' && exports.KEY_ENTER instanceof WebAssembly.Global) keys.push(exports.KEY_ENTER.value);
+      return keys;
+    }
+    return inputKey.length === 1 && inputKey.charCodeAt(0) >= 32 && inputKey.charCodeAt(0) <= 126 ? [inputKey.toLowerCase().charCodeAt(0)] : [];
   };
   const sendKey = (down) => (event) => {
-    const key = specialKey(event);
+    const keys = specialKeys(event);
     // Let the overlay's confirmation controls receive their own keyboard input.
-    if (key === undefined || !canvas.isConnected || document.activeElement !== canvas) return;
+    if (keys.length === 0 || !canvas.isConnected || document.activeElement !== canvas) return;
     event.preventDefault();
     // This listener runs during capture. Stop mapped Doom controls (especially
     // Escape) before the canvas modal's general keyboard handler can close it.
     event.stopPropagation();
-    (down ? exports.reportKeyDown : exports.reportKeyUp)(key);
+    keys.forEach((key) => (down ? exports.reportKeyDown : exports.reportKeyUp)(key));
   };
   const onKeyDown = sendKey(true);
   const onKeyUp = sendKey(false);
