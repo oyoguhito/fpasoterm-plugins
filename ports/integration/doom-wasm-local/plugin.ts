@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.2
+// @fpasoterm-plugin version: 1.0.3
 // @fpasoterm-plugin description: Runs a user-selected Doom WebAssembly engine and user-owned IWAD in a local canvas.
 
 const api = window.fpasotermPluginApi;
@@ -166,13 +166,18 @@ async function startGame(canvas, engineBytes, wadBytes, wadName) {
   exports.initGame();
   api.log(`integration/doom-wasm-local started ${wadName}; saves are disabled`);
   const specialKey = (event) => {
+    // Physical codes keep decision keys working on IME and non-US layouts
+    // where KeyboardEvent.key can be Process or another layout-specific value.
+    const inputKey = event.code === 'Enter' || event.code === 'NumpadEnter' ? 'Enter'
+      : event.code === 'Space' ? ' '
+        : event.key;
     const names = {
       ArrowLeft: 'KEY_LEFTARROW', ArrowRight: 'KEY_RIGHTARROW', ArrowUp: 'KEY_UPARROW', ArrowDown: 'KEY_DOWNARROW',
       Control: 'KEY_FIRE', ' ': 'KEY_USE', Shift: 'KEY_SHIFT', Alt: 'KEY_ALT', Backspace: 'KEY_BACKSPACE',
     };
-    const name = names[event.key];
+    const name = names[inputKey];
     if (name && exports[name] instanceof WebAssembly.Global) return exports[name].value;
-    return event.key.length === 1 && event.key.charCodeAt(0) >= 32 && event.key.charCodeAt(0) <= 126 ? event.key.toLowerCase().charCodeAt(0) : undefined;
+    return inputKey.length === 1 && inputKey.charCodeAt(0) >= 32 && inputKey.charCodeAt(0) <= 126 ? inputKey.toLowerCase().charCodeAt(0) : undefined;
   };
   const sendKey = (down) => (event) => {
     const key = specialKey(event);

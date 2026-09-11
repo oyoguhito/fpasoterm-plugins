@@ -1,7 +1,7 @@
 [port]
 id = "integration/doom-wasm-local"
 name = "doom-wasm-local"
-version = "1.0.2"
+version = "1.0.3"
 author = "oyoguhito"
 description = "Runs a user-selected GPL Doom WebAssembly engine and user-owned IWAD in a local canvas."
 license = "MIT"
