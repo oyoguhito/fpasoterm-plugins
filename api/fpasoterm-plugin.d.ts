@@ -62,6 +62,16 @@ type FpasotermPluginApi = {
     close: () => void;
     focus: () => void;
   };
+  /** Opens an HTTPS iframe panel for this plugin's declared, application-approved origins. */
+  openWebPanel: (options: {
+    title?: string;
+    url: string;
+    width?: number;
+    height?: number;
+  }) => {
+    close: () => void;
+    focus: () => void;
+  };
   onReady: (callback: () => void) => void;
   registerCommand: (
     id: string,

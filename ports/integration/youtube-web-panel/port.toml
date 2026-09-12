@@ -1,0 +1,10 @@
+[port]
+id = "integration/youtube-web-panel"
+name = "youtube-web-panel"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Shows the official YouTube iframe sample in an allowlisted in-app web panel."
+license = "MIT"
+minFpasotermVersion = "1.6.4"
+source = "plugin.ts"
+installPath = "integration/youtube-web-panel.ts"
