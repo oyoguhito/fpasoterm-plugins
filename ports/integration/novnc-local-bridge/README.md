@@ -5,15 +5,42 @@ noVNC 1.5.0 and can connect only to the exact target declared in its source:
 `tcp://127.0.0.1:59999`. This deliberately unused default avoids contacting an
 existing local VNC server during ordinary plugin development.
 
-For an actual VNC check, run `npm run configure:novnc-port --
-tcp://host:port` (for example `tcp://127.0.0.1:5900`). It updates the exact
-declared target and regenerates `plugin.js` together. Install that reviewed
-local port, then select **Open noVNC local bridge (test)** from Plugins. Run
-`npm run reset:novnc-port` after the check to restore the unused default target
-and regenerate `plugin.js`. fpasoterm asks before every
-connection and asks for a VNC password only when the server requires one.
-Neither password nor VNC traffic is written to fpasoterm configuration or
-Diagnostics.
+For an actual VNC check, configure the exact target and regenerate `plugin.js`
+together:
+
+```bash
+npm run configure:novnc-port -- tcp://host:port
+```
+
+For example, the normal VNC port is `5900`; use
+`tcp://127.0.0.1:5900` or another trusted private-network endpoint. Then,
+from a sibling fpasoterm checkout, install the local port and start a freshly
+rebuilt application:
+
+```bash
+cd ../fpasoterm
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/novnc-local-bridge --enable --force
+bin/fpasoterm --dev --plugin-activity --console-diagnostics
+```
+
+Select **Open noVNC local bridge (test)** from Plugins. Confirm that the
+connection dialog shows the exact configured target before selecting Connect.
+
+After the check, restore both the checkout and installed plugin to the safe
+unused default:
+
+```bash
+cd ../fpasoterm-plugins
+npm run reset:novnc-port
+cd ../fpasoterm
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/novnc-local-bridge --enable --force
+```
+
+fpasoterm asks before every connection and asks for a VNC password only when
+the server requires one. Neither password nor VNC traffic is written to
+fpasoterm configuration or Diagnostics.
 
 `tcp://` is VNC's normal unencrypted RFB transport; use it only for localhost
 or another trusted network. A reviewed plugin may instead declare a strict
