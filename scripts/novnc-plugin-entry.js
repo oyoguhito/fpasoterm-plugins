@@ -11,6 +11,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   overlay.element.replaceChildren(status, screen);
   status.textContent = 'Waiting for connection confirmation…';
   let rfb;
+  let connected = false;
   try {
     // This exact target is declared in the installed plugin header. To connect
     // elsewhere, make a reviewed plugin with a matching target declaration.
@@ -20,6 +21,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     rfb.scaleViewport = true;
     rfb.resizeSession = false;
     rfb.addEventListener('connect', (event) => {
+      connected = true;
+      api.dismissPrompts();
       status.textContent = `Connected: ${event.detail?.name || 'VNC server'}`;
       overlay.focus();
     });
@@ -27,6 +30,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       status.textContent = event.detail?.clean ? 'Disconnected.' : 'Connection closed unexpectedly. Check Plugin Activity.';
     });
     rfb.addEventListener('credentialsrequired', async (event) => {
+      if (connected) {
+        api.log('noVNC ignored a credential request received after connection');
+        return;
+      }
       const types = Array.isArray(event.detail?.types) ? event.detail.types : ['password'];
       const credentials = {};
       for (const type of types) {
@@ -38,12 +45,12 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         });
         if (value === null) {
           status.textContent = `VNC ${type} entry cancelled.`;
-          rfb.disconnect();
+          if (!connected) rfb.disconnect();
           return;
         }
         credentials[type] = value;
       }
-      rfb.sendCredentials(credentials);
+      if (!connected) rfb.sendCredentials(credentials);
     });
   } catch (error) {
     status.textContent = `Could not start noVNC: ${String(error)}`;

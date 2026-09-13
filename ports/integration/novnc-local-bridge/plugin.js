@@ -17546,6 +17546,7 @@
     overlay.element.replaceChildren(status, screen);
     status.textContent = "Waiting for connection confirmation\u2026";
     let rfb;
+    let connected = false;
     try {
       const bridgeUrl = await api.openVncBridge({ target: "tcp://127.0.0.1:59999" });
       status.textContent = "Connecting to the configured verification target through the local bridge\u2026";
@@ -17553,6 +17554,8 @@
       rfb.scaleViewport = true;
       rfb.resizeSession = false;
       rfb.addEventListener("connect", (event) => {
+        connected = true;
+        api.dismissPrompts();
         status.textContent = `Connected: ${event.detail?.name || "VNC server"}`;
         overlay.focus();
       });
@@ -17560,6 +17563,10 @@
         status.textContent = event.detail?.clean ? "Disconnected." : "Connection closed unexpectedly. Check Plugin Activity.";
       });
       rfb.addEventListener("credentialsrequired", async (event) => {
+        if (connected) {
+          api.log("noVNC ignored a credential request received after connection");
+          return;
+        }
         const types = Array.isArray(event.detail?.types) ? event.detail.types : ["password"];
         const credentials = {};
         for (const type of types) {
@@ -17571,12 +17578,12 @@
           });
           if (value === null) {
             status.textContent = `VNC ${type} entry cancelled.`;
-            rfb.disconnect();
+            if (!connected) rfb.disconnect();
             return;
           }
           credentials[type] = value;
         }
-        rfb.sendCredentials(credentials);
+        if (!connected) rfb.sendCredentials(credentials);
       });
     } catch (error) {
       status.textContent = `Could not start noVNC: ${String(error)}`;
