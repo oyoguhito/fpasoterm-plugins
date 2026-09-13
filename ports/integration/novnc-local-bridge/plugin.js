@@ -17546,6 +17546,8 @@
     const zoomIn = document.createElement("button");
     const fit = document.createElement("button");
     const pan = document.createElement("button");
+    const screenOne = document.createElement("button");
+    const screenTwo = document.createElement("button");
     const panLeft = document.createElement("button");
     const panUp = document.createElement("button");
     const panDown = document.createElement("button");
@@ -17555,17 +17557,21 @@
     const superKey = document.createElement("button");
     const releaseKeys = document.createElement("button");
     const screen = document.createElement("div");
+    const panCapture = document.createElement("div");
     overlay.element.style.display = "flex";
     overlay.element.style.flexDirection = "column";
     overlay.element.style.overflow = "hidden";
     status.style.cssText = "flex:1;margin:0;padding:8px;color:#d8e7f5;font:13px ui-monospace,monospace";
-    toolbar.style.cssText = "display:flex;flex:0 0 auto;align-items:center;gap:6px;background:#17212b";
-    screen.style.cssText = "flex:1 1 auto;min-height:0;width:100%;overflow:auto;background:#000";
+    toolbar.style.cssText = "display:flex;flex:0 0 auto;flex-wrap:wrap;align-items:center;gap:6px;background:#17212b";
+    screen.style.cssText = "position:relative;flex:1 1 auto;min-height:0;width:100%;overflow:hidden;background:#000";
+    panCapture.style.cssText = "display:none;position:absolute;inset:0;z-index:10;cursor:grab;touch-action:none";
     for (const [button, label] of [
       [zoomOut, "Zoom \u2212"],
       [zoomIn, "Zoom +"],
       [fit, "Fit"],
       [pan, "Pan"],
+      [screenOne, "Screen 1"],
+      [screenTwo, "Screen 2"],
       [panLeft, "\u2190"],
       [panUp, "\u2191"],
       [panDown, "\u2193"],
@@ -17584,11 +17590,14 @@
     panDown.title = "Pan down";
     panRight.title = "Pan right";
     pan.title = "Toggle local drag-to-pan mode";
+    screenOne.title = "Show the first (top-left) remote screen";
+    screenTwo.title = "Show the second (bottom-right) remote screen";
     control.title = "Toggle remote Control key";
     alt.title = "Toggle remote Alt key";
     superKey.title = "Toggle remote Super (Command / Windows) key";
     releaseKeys.title = "Release all toggled remote modifier keys";
-    toolbar.append(status, zoomOut, zoomIn, fit, pan, panLeft, panUp, panDown, panRight, control, alt, superKey, releaseKeys);
+    toolbar.append(status, zoomOut, zoomIn, fit, pan, screenOne, screenTwo, panLeft, panUp, panDown, panRight, control, alt, superKey, releaseKeys);
+    screen.append(panCapture);
     overlay.element.replaceChildren(toolbar, screen);
     status.textContent = "Waiting for connection confirmation\u2026";
     let rfb;
@@ -17601,23 +17610,43 @@
       button.setAttribute("aria-pressed", String(enabled));
       button.style.background = enabled ? "#2d7d46" : "#263b4e";
     };
-    const panViewport = () => screen.firstElementChild || screen;
+    const panViewport = () => screen.querySelector("canvas")?.parentElement || screen;
     const enablePan = () => {
       if (!rfb) return null;
       rfb.scaleViewport = false;
       rfb.clipViewport = true;
       screen.style.zoom = "1";
-      return panViewport();
+      const viewport = panViewport();
+      viewport.style.display = "block";
+      const canvas = screen.querySelector("canvas");
+      if (canvas) {
+        canvas.style.flex = "none";
+        canvas.style.margin = "0";
+      }
+      return viewport;
     };
     const panBy = (left, top) => {
       const viewport = enablePan();
       if (!viewport) return;
-      viewport.scrollBy({ left, top, behavior: "smooth" });
+      viewport.scrollLeft += left;
+      viewport.scrollTop += top;
+      api.log(`noVNC pan: left=${viewport.scrollLeft}/${Math.max(0, viewport.scrollWidth - viewport.clientWidth)}, top=${viewport.scrollTop}/${Math.max(0, viewport.scrollHeight - viewport.clientHeight)}`);
       status.textContent = "Panning at 100%. Enable Pan to drag with the mouse.";
+    };
+    const showScreen = (number) => {
+      const viewport = enablePan();
+      if (!viewport) return;
+      const maximumLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+      const maximumTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      viewport.scrollLeft = number === 1 ? 0 : maximumLeft;
+      viewport.scrollTop = number === 1 ? 0 : maximumTop;
+      api.log(`noVNC screen ${number}: left=${viewport.scrollLeft}/${maximumLeft}, top=${viewport.scrollTop}/${maximumTop}`);
+      status.textContent = number === 1 ? "Screen 1 (top-left) selected." : "Screen 2 (bottom-right) selected.";
     };
     const setPanMode = (enabled) => {
       panMode = enabled;
       setToggleAppearance(pan, panMode);
+      panCapture.style.display = panMode ? "block" : "none";
       status.textContent = panMode ? "Pan mode enabled: drag the remote view to move it. Click Pan again to send normal mouse drags." : "Pan mode disabled: mouse drags are sent to the remote desktop.";
     };
     const toggleModifier = (button, name, keysym, code) => {
@@ -17666,10 +17695,20 @@
       if (rfb) {
         rfb.clipViewport = false;
         rfb.scaleViewport = true;
+        const viewport = panViewport();
+        viewport.style.display = "flex";
+        const canvas = screen.querySelector("canvas");
+        if (canvas) {
+          canvas.style.flex = "";
+          canvas.style.margin = "";
+        }
       }
+      setPanMode(false);
       status.textContent = "Fit to panel.";
     });
     pan.addEventListener("click", () => setPanMode(!panMode));
+    screenOne.addEventListener("click", () => showScreen(1));
+    screenTwo.addEventListener("click", () => showScreen(2));
     panLeft.addEventListener("click", () => panBy(-Math.max(160, screen.clientWidth * 0.7), 0));
     panRight.addEventListener("click", () => panBy(Math.max(160, screen.clientWidth * 0.7), 0));
     panUp.addEventListener("click", () => panBy(0, -Math.max(120, screen.clientHeight * 0.7)));
@@ -17678,34 +17717,31 @@
     alt.addEventListener("click", () => toggleModifier(alt, "Alt", import_keysym.default.XK_Alt_L, "AltLeft"));
     superKey.addEventListener("click", () => toggleModifier(superKey, "Super", import_keysym.default.XK_Super_L, "MetaLeft"));
     releaseKeys.addEventListener("click", releaseModifiers);
-    screen.addEventListener("pointerdown", (event) => {
-      if (!panMode && !event.altKey || event.button !== 0 || !rfb) return;
+    panCapture.addEventListener("pointerdown", (event) => {
+      if (!panMode || event.button !== 0 || !rfb) return;
       const viewport = enablePan();
       if (!viewport) return;
       event.preventDefault();
-      event.stopPropagation();
       dragPan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
-      screen.setPointerCapture?.(event.pointerId);
-      screen.style.cursor = "grabbing";
-    }, true);
-    screen.addEventListener("pointermove", (event) => {
+      panCapture.setPointerCapture?.(event.pointerId);
+      panCapture.style.cursor = "grabbing";
+    });
+    panCapture.addEventListener("pointermove", (event) => {
       if (!dragPan || dragPan.pointerId !== event.pointerId) return;
       const viewport = panViewport();
       viewport.scrollLeft = dragPan.left - (event.clientX - dragPan.x);
       viewport.scrollTop = dragPan.top - (event.clientY - dragPan.y);
       event.preventDefault();
-      event.stopPropagation();
-    }, true);
+    });
     const stopDragPan = (event) => {
       if (!dragPan || dragPan.pointerId !== event.pointerId) return;
-      screen.releasePointerCapture?.(event.pointerId);
+      panCapture.releasePointerCapture?.(event.pointerId);
       dragPan = null;
-      screen.style.cursor = "";
+      panCapture.style.cursor = "grab";
       event.preventDefault();
-      event.stopPropagation();
     };
-    screen.addEventListener("pointerup", stopDragPan, true);
-    screen.addEventListener("pointercancel", stopDragPan, true);
+    panCapture.addEventListener("pointerup", stopDragPan);
+    panCapture.addEventListener("pointercancel", stopDragPan);
     try {
       const bridgeUrl = await api.openVncBridge({ target: "tcp://127.0.0.1:59999" });
       status.textContent = "Connecting to the configured verification target through the local bridge\u2026";
