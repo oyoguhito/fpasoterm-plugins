@@ -38,9 +38,10 @@ bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
   --plugin-install integration/novnc-local-bridge --enable --force
 ```
 
-fpasoterm asks before every connection and asks for a VNC password only when
-the server requires one. Neither password nor VNC traffic is written to
-fpasoterm configuration or Diagnostics.
+fpasoterm asks before every connection. When the server requests credentials,
+noVNC asks for exactly the requested fields (such as username and password).
+They are held only in memory; neither credentials nor VNC traffic are written
+to fpasoterm configuration or Diagnostics.
 
 `tcp://` is VNC's normal unencrypted RFB transport; use it only for localhost
 or another trusted network. A reviewed plugin may instead declare a strict

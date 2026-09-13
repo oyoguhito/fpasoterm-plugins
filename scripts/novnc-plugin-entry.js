@@ -26,18 +26,24 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     rfb.addEventListener('disconnect', (event) => {
       status.textContent = event.detail?.clean ? 'Disconnected.' : 'Connection closed unexpectedly. Check Plugin Activity.';
     });
-    rfb.addEventListener('credentialsrequired', async () => {
-      const password = await api.promptSecret({
-        title: 'VNC password required',
-        message: 'The VNC server requested a password. It is held only in memory and is not saved or logged.',
-        approve: 'Send password',
-      });
-      if (password === null) {
-        status.textContent = 'VNC password entry cancelled.';
-        rfb.disconnect();
-        return;
+    rfb.addEventListener('credentialsrequired', async (event) => {
+      const types = Array.isArray(event.detail?.types) ? event.detail.types : ['password'];
+      const credentials = {};
+      for (const type of types) {
+        const isPassword = type === 'password';
+        const value = await (isPassword ? api.promptSecret : api.promptText)({
+          title: `VNC ${type} required`,
+          message: `The VNC server requested ${type}. It is held only in memory and is not saved or logged.`,
+          approve: `Send ${type}`,
+        });
+        if (value === null) {
+          status.textContent = `VNC ${type} entry cancelled.`;
+          rfb.disconnect();
+          return;
+        }
+        credentials[type] = value;
       }
-      rfb.sendCredentials({ password });
+      rfb.sendCredentials(credentials);
     });
   } catch (error) {
     status.textContent = `Could not start noVNC: ${String(error)}`;

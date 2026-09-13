@@ -86,6 +86,8 @@ type FpasotermPluginApi = {
   openVncBridge: (options: { target: string }) => Promise<string>;
   /** Prompts for a credential without persisting or logging its returned value. */
   promptSecret: (options?: { title?: string; message?: string; approve?: string }) => Promise<string | null>;
+  /** Prompts for non-secret connection text without persisting or logging it. */
+  promptText: (options?: { title?: string; message?: string; approve?: string }) => Promise<string | null>;
   onReady: (callback: () => void) => void;
   registerCommand: (
     id: string,
