@@ -9,6 +9,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const zoomOut = document.createElement('button');
   const zoomIn = document.createElement('button');
   const fit = document.createElement('button');
+  const panLeft = document.createElement('button');
+  const panUp = document.createElement('button');
+  const panDown = document.createElement('button');
+  const panRight = document.createElement('button');
   const screen = document.createElement('div');
   // Do not rely on percentage-height calculations here.  A noVNC RFB creates
   // its canvas inside this element, and a zero-height host looks like a black
@@ -22,16 +26,35 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   status.style.cssText = 'flex:1;margin:0;padding:8px;color:#d8e7f5;font:13px ui-monospace,monospace';
   toolbar.style.cssText = 'display:flex;flex:0 0 auto;align-items:center;gap:6px;background:#17212b';
   screen.style.cssText = 'flex:1 1 auto;min-height:0;width:100%;overflow:auto;background:#000';
-  for (const [button, label] of [[zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit']]) {
+  for (const [button, label] of [
+    [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'],
+    [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
+  ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
   }
-  toolbar.append(status, zoomOut, zoomIn, fit);
+  panLeft.title = 'Pan left'; panUp.title = 'Pan up';
+  panDown.title = 'Pan down'; panRight.title = 'Pan right';
+  toolbar.append(status, zoomOut, zoomIn, fit, panLeft, panUp, panDown, panRight);
   overlay.element.replaceChildren(toolbar, screen);
   status.textContent = 'Waiting for connection confirmation…';
   let rfb;
   let connected = false;
   let zoom = 1;
+  let dragPan = null;
+  const panViewport = () => screen.firstElementChild || screen;
+  const enablePan = () => {
+    if (!rfb) return null;
+    rfb.scaleViewport = false;
+    screen.style.zoom = '1';
+    return panViewport();
+  };
+  const panBy = (left, top) => {
+    const viewport = enablePan();
+    if (!viewport) return;
+    viewport.scrollBy({ left, top, behavior: 'smooth' });
+    status.textContent = 'Panning at 100%. Hold Alt and drag to pan with the mouse.';
+  };
   const reportFramebuffer = (stage) => {
     const canvas = screen.querySelector('canvas');
     const viewport = `${screen.clientWidth}x${screen.clientHeight}`;
@@ -54,6 +77,37 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     if (rfb) rfb.scaleViewport = true;
     status.textContent = 'Fit to panel.';
   });
+  panLeft.addEventListener('click', () => panBy(-Math.max(160, screen.clientWidth * 0.7), 0));
+  panRight.addEventListener('click', () => panBy(Math.max(160, screen.clientWidth * 0.7), 0));
+  panUp.addEventListener('click', () => panBy(0, -Math.max(120, screen.clientHeight * 0.7)));
+  panDown.addEventListener('click', () => panBy(0, Math.max(120, screen.clientHeight * 0.7)));
+  // Normal pointer drags are sent to the remote desktop.  Alt+drag is kept
+  // local so users can pan a multi-monitor framebuffer without losing remote
+  // drag-and-drop support.
+  screen.addEventListener('pointerdown', (event) => {
+    if (!event.altKey || event.button !== 0 || !rfb) return;
+    const viewport = enablePan();
+    if (!viewport) return;
+    event.preventDefault(); event.stopPropagation();
+    dragPan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+    screen.setPointerCapture?.(event.pointerId);
+    screen.style.cursor = 'grabbing';
+  }, true);
+  screen.addEventListener('pointermove', (event) => {
+    if (!dragPan || dragPan.pointerId !== event.pointerId) return;
+    const viewport = panViewport();
+    viewport.scrollLeft = dragPan.left - (event.clientX - dragPan.x);
+    viewport.scrollTop = dragPan.top - (event.clientY - dragPan.y);
+    event.preventDefault(); event.stopPropagation();
+  }, true);
+  const stopDragPan = (event) => {
+    if (!dragPan || dragPan.pointerId !== event.pointerId) return;
+    screen.releasePointerCapture?.(event.pointerId);
+    dragPan = null; screen.style.cursor = '';
+    event.preventDefault(); event.stopPropagation();
+  };
+  screen.addEventListener('pointerup', stopDragPan, true);
+  screen.addEventListener('pointercancel', stopDragPan, true);
   try {
     // This exact target is declared in the installed plugin header. To connect
     // elsewhere, make a reviewed plugin with a matching target declaration.
