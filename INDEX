@@ -1,8 +1,8 @@
 appearance/amber|amber|1.0.0|oyoguhito|Applies an amber-on-charcoal terminal palette for a warm high-contrast appearance.|MIT|1.5.5|appearance/amber.ts
 appearance/high-contrast|high-contrast|1.0.0|oyoguhito|Applies a high-contrast palette for clearly separated terminal colors.|MIT|1.5.5|appearance/high-contrast.ts
 appearance/teal|teal|1.0.0|oyoguhito|Applies a teal terminal palette with a translucent dark background.|MIT|1.5.5|appearance/teal.ts
-integration/doom-wad-inspector|doom-wad-inspector|1.0.1|oyoguhito|Validates a user-selected Doom IWAD locally and displays its metadata and SHA-256.|MIT|1.6.3|integration/doom-wad-inspector.ts
-integration/doom-wasm-local|doom-wasm-local|1.0.8|oyoguhito|Runs a user-selected GPL Doom WebAssembly engine and user-owned IWAD in a local canvas.|MIT|1.6.3|integration/doom-wasm-local.ts
+integration/doom-wad-inspector|doom-wad-inspector|1.0.2|oyoguhito|Validates a user-selected Doom IWAD locally and displays its metadata and SHA-256.|MIT|1.6.3|integration/doom-wad-inspector.ts
+integration/doom-wasm-local|doom-wasm-local|1.0.9|oyoguhito|Runs a user-selected GPL Doom WebAssembly engine and user-owned IWAD in a local canvas.|MIT|1.6.3|integration/doom-wasm-local.ts
 integration/youtube-web-panel|youtube-web-panel|1.0.0|oyoguhito|Shows the official YouTube iframe sample in an allowlisted in-app web panel.|MIT|1.6.4|integration/youtube-web-panel.ts
 productivity/clipboard-translate|clipboard-translate|1.0.0|oyoguhito|Opens a clipboard translation panel for Google Translate or another translation website.|MIT|1.6.2|productivity/clipboard-translate.ts
 productivity/git-status|git-status|1.0.0|oyoguhito|Adds a Plugins menu action that inserts git status --short without executing it.|MIT|1.5.5|productivity/git-status.ts

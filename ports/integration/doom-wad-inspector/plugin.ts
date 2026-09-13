@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.1
+// @fpasoterm-plugin version: 1.0.2
 // @fpasoterm-plugin description: Validates one explicitly selected Doom IWAD locally and shows its metadata and SHA-256.
 
 const api = window.fpasotermPluginApi;
@@ -65,13 +65,27 @@ function drawLines(canvas, lines) {
   context.fillStyle = '#d8e7f5';
   context.font = '16px ui-monospace, monospace';
   context.textBaseline = 'top';
-  lines.forEach((line, index) => context.fillText(line, 24, 24 + index * 25));
+  const wrapped = [];
+  for (const source of lines) {
+    let line = '';
+    for (const character of String(source)) {
+      if (line && context.measureText(line + character).width > canvas.width - 48) {
+        wrapped.push(line);
+        line = character;
+      } else {
+        line += character;
+      }
+    }
+    wrapped.push(line);
+  }
+  wrapped.forEach((line, index) => context.fillText(line, 24, 24 + index * 25));
 }
 
 api.registerCommand('doom-wad-inspector', 'Inspect local Doom IWAD', () => {
   const overlay = api.openCanvasOverlay({ title: 'Doom IWAD inspector', width: 960, height: 600 });
   const { canvas } = overlay;
   let selecting = false;
+  let retryRequiresKeyboard = false;
   drawLines(canvas, [
     'Select a Doom IWAD you are permitted to use.',
     'Click this canvas, or press Enter or Space. Escape closes.',
@@ -102,16 +116,24 @@ api.registerCommand('doom-wad-inspector', 'Inspect local Doom IWAD', () => {
       ]);
       api.log(`integration/doom-wad-inspector validated ${asset.name} sha256=${wad.sha256}`);
     } catch (error) {
-      drawLines(canvas, ['Could not validate this Doom IWAD.', String(error), '', 'Click, Enter, or Space to try another file.']);
+      retryRequiresKeyboard = true;
+      drawLines(canvas, ['Could not validate this Doom IWAD.', String(error), '', 'Press Enter or Space to try another file. Click only focuses this error message.']);
       api.log(`integration/doom-wad-inspector validation failed: ${String(error)}`);
     } finally {
       selecting = false;
     }
   };
-  canvas.addEventListener('click', () => { void selectAndInspect(); });
+  canvas.addEventListener('click', () => {
+    if (retryRequiresKeyboard) {
+      canvas.focus();
+      return;
+    }
+    void selectAndInspect();
+  });
   canvas.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
+      retryRequiresKeyboard = false;
       void selectAndInspect();
     }
   });
