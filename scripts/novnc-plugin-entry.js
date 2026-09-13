@@ -46,6 +46,11 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const enablePan = () => {
     if (!rfb) return null;
     rfb.scaleViewport = false;
+    // Without clipping, noVNC keeps the complete native framebuffer in its
+    // flex layout and there is no scrollable viewport to pan.  Clipping makes
+    // the panel a viewport over the virtual desktop, including a second
+    // monitor positioned to the right or below the first one.
+    rfb.clipViewport = true;
     screen.style.zoom = '1';
     return panViewport();
   };
@@ -74,7 +79,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   fit.addEventListener('click', () => {
     zoom = 1;
     screen.style.zoom = '1';
-    if (rfb) rfb.scaleViewport = true;
+    if (rfb) {
+      rfb.clipViewport = false;
+      rfb.scaleViewport = true;
+    }
     status.textContent = 'Fit to panel.';
   });
   panLeft.addEventListener('click', () => panBy(-Math.max(160, screen.clientWidth * 0.7), 0));

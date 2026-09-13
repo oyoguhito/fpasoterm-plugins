@@ -17583,6 +17583,7 @@
     const enablePan = () => {
       if (!rfb) return null;
       rfb.scaleViewport = false;
+      rfb.clipViewport = true;
       screen.style.zoom = "1";
       return panViewport();
     };
@@ -17617,7 +17618,10 @@
     fit.addEventListener("click", () => {
       zoom = 1;
       screen.style.zoom = "1";
-      if (rfb) rfb.scaleViewport = true;
+      if (rfb) {
+        rfb.clipViewport = false;
+        rfb.scaleViewport = true;
+      }
       status.textContent = "Fit to panel.";
     });
     panLeft.addEventListener("click", () => panBy(-Math.max(160, screen.clientWidth * 0.7), 0));
