@@ -26,6 +26,9 @@ bin/fpasoterm --dev --plugin-activity --console-diagnostics
 
 Select **Open noVNC local bridge (test)** from Plugins. Confirm that the
 connection dialog shows the exact configured target before selecting Connect.
+The plugin requests username first (leave blank for password-only servers),
+then password, before starting noVNC. The panel also provides **Zoom −**,
+**Zoom +**, and **Fit** controls; Fit is the default automatic sizing mode.
 
 After the check, restore both the checkout and installed plugin to the safe
 unused default:
