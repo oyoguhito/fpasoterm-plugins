@@ -13,11 +13,14 @@ if (port > 65535) throw new Error('port must be between 1 and 65535');
 const root = path.resolve(__dirname, '..');
 const entry = path.join(root, 'scripts', 'novnc-plugin-entry.js');
 const source = fs.readFileSync(entry, 'utf8');
+const targetPattern = /openVncBridge\(\{ target: '(?:tcp|tls):\/\/[^']+' \}\)/;
+if (!targetPattern.test(source)) {
+  throw new Error('noVNC entry does not contain a configurable strict target');
+}
 const updated = source.replace(
-  /openVncBridge\(\{ target: '(?:tcp|tls):\/\/[^']+' \}\)/,
+  targetPattern,
   `openVncBridge({ target: '${target}' })`,
 );
-if (updated === source) throw new Error('noVNC entry does not contain a configurable strict target');
-fs.writeFileSync(entry, updated);
+if (updated !== source) fs.writeFileSync(entry, updated);
 build();
-console.log(`configured noVNC verification port for ${target}`);
+console.log(`${updated === source ? 'kept' : 'configured'} noVNC verification port for ${target}`);

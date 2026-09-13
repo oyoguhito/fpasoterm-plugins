@@ -8,11 +8,14 @@ const root = path.resolve(__dirname, '..');
 const entry = path.join(root, 'scripts', 'novnc-plugin-entry.js');
 const defaultTarget = 'tcp://127.0.0.1:59999';
 const source = fs.readFileSync(entry, 'utf8');
+const targetPattern = /openVncBridge\(\{ target: '(?:tcp|tls):\/\/[^']+' \}\)/;
+if (!targetPattern.test(source)) {
+  throw new Error('noVNC entry does not contain a resettable strict target');
+}
 const updated = source.replace(
-  /openVncBridge\(\{ target: '(?:tcp|tls):\/\/[^']+' \}\)/,
+  targetPattern,
   `openVncBridge({ target: '${defaultTarget}' })`,
 );
-if (updated === source) throw new Error('noVNC entry does not contain a resettable strict target');
-fs.writeFileSync(entry, updated);
+if (updated !== source) fs.writeFileSync(entry, updated);
 build();
-console.log(`reset noVNC verification port to ${defaultTarget}`);
+console.log(`${updated === source ? 'kept' : 'reset'} noVNC verification port to ${defaultTarget}`);
