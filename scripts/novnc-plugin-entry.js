@@ -13,7 +13,12 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   // Do not rely on percentage-height calculations here.  A noVNC RFB creates
   // its canvas inside this element, and a zero-height host looks like a black
   // remote desktop even when the connection itself succeeded.
-  overlay.element.style.cssText = 'display:flex;flex-direction:column;overflow:hidden';
+  // Preserve the height that openElementOverlay set on this content element.
+  // Assigning cssText here would clear that inline height and leave noVNC with
+  // a 0px-high viewport.
+  overlay.element.style.display = 'flex';
+  overlay.element.style.flexDirection = 'column';
+  overlay.element.style.overflow = 'hidden';
   status.style.cssText = 'flex:1;margin:0;padding:8px;color:#d8e7f5;font:13px ui-monospace,monospace';
   toolbar.style.cssText = 'display:flex;flex:0 0 auto;align-items:center;gap:6px;background:#17212b';
   screen.style.cssText = 'flex:1 1 auto;min-height:0;width:100%;overflow:auto;background:#000';

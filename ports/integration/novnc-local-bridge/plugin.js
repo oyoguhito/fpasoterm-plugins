@@ -17545,7 +17545,9 @@
     const zoomIn = document.createElement("button");
     const fit = document.createElement("button");
     const screen = document.createElement("div");
-    overlay.element.style.cssText = "display:flex;flex-direction:column;overflow:hidden";
+    overlay.element.style.display = "flex";
+    overlay.element.style.flexDirection = "column";
+    overlay.element.style.overflow = "hidden";
     status.style.cssText = "flex:1;margin:0;padding:8px;color:#d8e7f5;font:13px ui-monospace,monospace";
     toolbar.style.cssText = "display:flex;flex:0 0 auto;align-items:center;gap:6px;background:#17212b";
     screen.style.cssText = "flex:1 1 auto;min-height:0;width:100%;overflow:auto;background:#000";
