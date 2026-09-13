@@ -10,9 +10,13 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const zoomIn = document.createElement('button');
   const fit = document.createElement('button');
   const screen = document.createElement('div');
+  // Do not rely on percentage-height calculations here.  A noVNC RFB creates
+  // its canvas inside this element, and a zero-height host looks like a black
+  // remote desktop even when the connection itself succeeded.
+  overlay.element.style.cssText = 'display:flex;flex-direction:column;overflow:hidden';
   status.style.cssText = 'flex:1;margin:0;padding:8px;color:#d8e7f5;font:13px ui-monospace,monospace';
-  toolbar.style.cssText = 'display:flex;align-items:center;gap:6px;background:#17212b';
-  screen.style.cssText = 'height:calc(100% - 42px);overflow:auto;background:#000';
+  toolbar.style.cssText = 'display:flex;flex:0 0 auto;align-items:center;gap:6px;background:#17212b';
+  screen.style.cssText = 'flex:1 1 auto;min-height:0;width:100%;overflow:auto;background:#000';
   for (const [button, label] of [[zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit']]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
@@ -23,6 +27,14 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let rfb;
   let connected = false;
   let zoom = 1;
+  const reportFramebuffer = (stage) => {
+    const canvas = screen.querySelector('canvas');
+    const viewport = `${screen.clientWidth}x${screen.clientHeight}`;
+    const framebuffer = canvas ? `${canvas.width}x${canvas.height}` : 'not created';
+    const message = `noVNC ${stage}: viewport=${viewport}, framebuffer=${framebuffer}`;
+    api.log(message);
+    return { canvas, viewport, framebuffer };
+  };
   const applyZoom = () => {
     if (!rfb) return;
     rfb.scaleViewport = false;
@@ -57,14 +69,31 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     rfb = new RFB(screen, bridgeUrl, { credentials: { username, password } });
     rfb.scaleViewport = true;
     rfb.resizeSession = false;
+    reportFramebuffer('RFB created');
     rfb.addEventListener('connect', (event) => {
       connected = true;
       api.dismissPrompts();
-      status.textContent = `Connected: ${event.detail?.name || 'VNC server'}`;
+      status.textContent = `Connected: ${event.detail?.name || 'VNC server'}; waiting for remote framebuffer…`;
       overlay.focus();
+      requestAnimationFrame(() => {
+        rfb.scaleViewport = true;
+        const details = reportFramebuffer('connected');
+        status.textContent = `Connected: ${event.detail?.name || 'VNC server'} (${details.framebuffer})`;
+      });
+      window.setTimeout(() => {
+        const details = reportFramebuffer('after connection');
+        if (!details.canvas || details.canvas.width === 0 || details.canvas.height === 0) {
+          status.textContent = `Connected, but no framebuffer yet (${details.framebuffer}). Check Plugin Activity.`;
+        }
+      }, 750);
     });
     rfb.addEventListener('disconnect', (event) => {
       status.textContent = event.detail?.clean ? 'Disconnected.' : 'Connection closed unexpectedly. Check Plugin Activity.';
+      api.log(`noVNC disconnected: clean=${Boolean(event.detail?.clean)}`);
+    });
+    rfb.addEventListener('securityfailure', (event) => {
+      api.log(`noVNC security failure: ${JSON.stringify(event.detail || {})}`);
+      status.textContent = 'VNC security negotiation failed. Check Plugin Activity.';
     });
     rfb.addEventListener('credentialsrequired', async (event) => {
       if (connected) {
