@@ -1,4 +1,5 @@
 import RFB from '@novnc/novnc/lib/rfb.js';
+import Keysyms from '@novnc/novnc/lib/input/keysym.js';
 
 const api = window.fpasotermPluginApi;
 
@@ -9,10 +10,15 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const zoomOut = document.createElement('button');
   const zoomIn = document.createElement('button');
   const fit = document.createElement('button');
+  const pan = document.createElement('button');
   const panLeft = document.createElement('button');
   const panUp = document.createElement('button');
   const panDown = document.createElement('button');
   const panRight = document.createElement('button');
+  const control = document.createElement('button');
+  const alt = document.createElement('button');
+  const superKey = document.createElement('button');
+  const releaseKeys = document.createElement('button');
   const screen = document.createElement('div');
   // Do not rely on percentage-height calculations here.  A noVNC RFB creates
   // its canvas inside this element, and a zero-height host looks like a black
@@ -27,21 +33,32 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   toolbar.style.cssText = 'display:flex;flex:0 0 auto;align-items:center;gap:6px;background:#17212b';
   screen.style.cssText = 'flex:1 1 auto;min-height:0;width:100%;overflow:auto;background:#000';
   for (const [button, label] of [
-    [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'],
+    [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [pan, 'Pan'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
+    [control, 'Ctrl'], [alt, 'Alt'], [superKey, 'Super'], [releaseKeys, 'Release'],
   ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
   }
   panLeft.title = 'Pan left'; panUp.title = 'Pan up';
   panDown.title = 'Pan down'; panRight.title = 'Pan right';
-  toolbar.append(status, zoomOut, zoomIn, fit, panLeft, panUp, panDown, panRight);
+  pan.title = 'Toggle local drag-to-pan mode';
+  control.title = 'Toggle remote Control key'; alt.title = 'Toggle remote Alt key';
+  superKey.title = 'Toggle remote Super (Command / Windows) key';
+  releaseKeys.title = 'Release all toggled remote modifier keys';
+  toolbar.append(status, zoomOut, zoomIn, fit, pan, panLeft, panUp, panDown, panRight, control, alt, superKey, releaseKeys);
   overlay.element.replaceChildren(toolbar, screen);
   status.textContent = 'Waiting for connection confirmation…';
   let rfb;
   let connected = false;
   let zoom = 1;
   let dragPan = null;
+  let panMode = false;
+  const heldModifiers = new Map();
+  const setToggleAppearance = (button, enabled) => {
+    button.setAttribute('aria-pressed', String(enabled));
+    button.style.background = enabled ? '#2d7d46' : '#263b4e';
+  };
   const panViewport = () => screen.firstElementChild || screen;
   const enablePan = () => {
     if (!rfb) return null;
@@ -58,7 +75,32 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     const viewport = enablePan();
     if (!viewport) return;
     viewport.scrollBy({ left, top, behavior: 'smooth' });
-    status.textContent = 'Panning at 100%. Hold Alt and drag to pan with the mouse.';
+    status.textContent = 'Panning at 100%. Enable Pan to drag with the mouse.';
+  };
+  const setPanMode = (enabled) => {
+    panMode = enabled;
+    setToggleAppearance(pan, panMode);
+    status.textContent = panMode
+      ? 'Pan mode enabled: drag the remote view to move it. Click Pan again to send normal mouse drags.'
+      : 'Pan mode disabled: mouse drags are sent to the remote desktop.';
+  };
+  const toggleModifier = (button, name, keysym, code) => {
+    if (!rfb) return;
+    const next = !heldModifiers.has(name);
+    rfb.sendKey(keysym, code, next);
+    if (next) heldModifiers.set(name, { keysym, code, button });
+    else heldModifiers.delete(name);
+    setToggleAppearance(button, next);
+    status.textContent = next ? `Remote ${name} held. Click again to release.` : `Remote ${name} released.`;
+  };
+  const releaseModifiers = () => {
+    if (!rfb) return;
+    for (const [name, modifier] of heldModifiers) {
+      rfb.sendKey(modifier.keysym, modifier.code, false);
+      setToggleAppearance(modifier.button, false);
+      heldModifiers.delete(name);
+    }
+    status.textContent = 'Remote modifier keys released.';
   };
   const reportFramebuffer = (stage) => {
     const canvas = screen.querySelector('canvas');
@@ -85,15 +127,20 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     }
     status.textContent = 'Fit to panel.';
   });
+  pan.addEventListener('click', () => setPanMode(!panMode));
   panLeft.addEventListener('click', () => panBy(-Math.max(160, screen.clientWidth * 0.7), 0));
   panRight.addEventListener('click', () => panBy(Math.max(160, screen.clientWidth * 0.7), 0));
   panUp.addEventListener('click', () => panBy(0, -Math.max(120, screen.clientHeight * 0.7)));
   panDown.addEventListener('click', () => panBy(0, Math.max(120, screen.clientHeight * 0.7)));
+  control.addEventListener('click', () => toggleModifier(control, 'Control', Keysyms.XK_Control_L, 'ControlLeft'));
+  alt.addEventListener('click', () => toggleModifier(alt, 'Alt', Keysyms.XK_Alt_L, 'AltLeft'));
+  superKey.addEventListener('click', () => toggleModifier(superKey, 'Super', Keysyms.XK_Super_L, 'MetaLeft'));
+  releaseKeys.addEventListener('click', releaseModifiers);
   // Normal pointer drags are sent to the remote desktop.  Alt+drag is kept
   // local so users can pan a multi-monitor framebuffer without losing remote
   // drag-and-drop support.
   screen.addEventListener('pointerdown', (event) => {
-    if (!event.altKey || event.button !== 0 || !rfb) return;
+    if ((!panMode && !event.altKey) || event.button !== 0 || !rfb) return;
     const viewport = enablePan();
     if (!viewport) return;
     event.preventDefault(); event.stopPropagation();
@@ -140,6 +187,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     rfb.addEventListener('connect', (event) => {
       connected = true;
       api.dismissPrompts();
+      setPanMode(false);
       status.textContent = `Connected: ${event.detail?.name || 'VNC server'}; waiting for remote framebuffer…`;
       overlay.focus();
       requestAnimationFrame(() => {
@@ -155,6 +203,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       }, 750);
     });
     rfb.addEventListener('disconnect', (event) => {
+      for (const modifier of heldModifiers.values()) setToggleAppearance(modifier.button, false);
+      heldModifiers.clear();
       status.textContent = event.detail?.clean ? 'Disconnected.' : 'Connection closed unexpectedly. Check Plugin Activity.';
       api.log(`noVNC disconnected: clean=${Boolean(event.detail?.clean)}`);
     });

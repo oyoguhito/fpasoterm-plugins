@@ -17536,6 +17536,7 @@
 
   // scripts/novnc-plugin-entry.js
   var import_rfb = __toESM(require_rfb());
+  var import_keysym = __toESM(require_keysym());
   var api = window.fpasotermPluginApi;
   api.registerCommand("novnc-local-bridge", "Open noVNC local bridge (test)", async () => {
     const overlay = api.openElementOverlay({ title: "noVNC local bridge (test)", width: 1100, height: 720 });
@@ -17544,10 +17545,15 @@
     const zoomOut = document.createElement("button");
     const zoomIn = document.createElement("button");
     const fit = document.createElement("button");
+    const pan = document.createElement("button");
     const panLeft = document.createElement("button");
     const panUp = document.createElement("button");
     const panDown = document.createElement("button");
     const panRight = document.createElement("button");
+    const control = document.createElement("button");
+    const alt = document.createElement("button");
+    const superKey = document.createElement("button");
+    const releaseKeys = document.createElement("button");
     const screen = document.createElement("div");
     overlay.element.style.display = "flex";
     overlay.element.style.flexDirection = "column";
@@ -17559,10 +17565,15 @@
       [zoomOut, "Zoom \u2212"],
       [zoomIn, "Zoom +"],
       [fit, "Fit"],
+      [pan, "Pan"],
       [panLeft, "\u2190"],
       [panUp, "\u2191"],
       [panDown, "\u2193"],
-      [panRight, "\u2192"]
+      [panRight, "\u2192"],
+      [control, "Ctrl"],
+      [alt, "Alt"],
+      [superKey, "Super"],
+      [releaseKeys, "Release"]
     ]) {
       button.type = "button";
       button.textContent = label;
@@ -17572,13 +17583,24 @@
     panUp.title = "Pan up";
     panDown.title = "Pan down";
     panRight.title = "Pan right";
-    toolbar.append(status, zoomOut, zoomIn, fit, panLeft, panUp, panDown, panRight);
+    pan.title = "Toggle local drag-to-pan mode";
+    control.title = "Toggle remote Control key";
+    alt.title = "Toggle remote Alt key";
+    superKey.title = "Toggle remote Super (Command / Windows) key";
+    releaseKeys.title = "Release all toggled remote modifier keys";
+    toolbar.append(status, zoomOut, zoomIn, fit, pan, panLeft, panUp, panDown, panRight, control, alt, superKey, releaseKeys);
     overlay.element.replaceChildren(toolbar, screen);
     status.textContent = "Waiting for connection confirmation\u2026";
     let rfb;
     let connected = false;
     let zoom = 1;
     let dragPan = null;
+    let panMode = false;
+    const heldModifiers = /* @__PURE__ */ new Map();
+    const setToggleAppearance = (button, enabled) => {
+      button.setAttribute("aria-pressed", String(enabled));
+      button.style.background = enabled ? "#2d7d46" : "#263b4e";
+    };
     const panViewport = () => screen.firstElementChild || screen;
     const enablePan = () => {
       if (!rfb) return null;
@@ -17591,7 +17613,30 @@
       const viewport = enablePan();
       if (!viewport) return;
       viewport.scrollBy({ left, top, behavior: "smooth" });
-      status.textContent = "Panning at 100%. Hold Alt and drag to pan with the mouse.";
+      status.textContent = "Panning at 100%. Enable Pan to drag with the mouse.";
+    };
+    const setPanMode = (enabled) => {
+      panMode = enabled;
+      setToggleAppearance(pan, panMode);
+      status.textContent = panMode ? "Pan mode enabled: drag the remote view to move it. Click Pan again to send normal mouse drags." : "Pan mode disabled: mouse drags are sent to the remote desktop.";
+    };
+    const toggleModifier = (button, name, keysym, code) => {
+      if (!rfb) return;
+      const next = !heldModifiers.has(name);
+      rfb.sendKey(keysym, code, next);
+      if (next) heldModifiers.set(name, { keysym, code, button });
+      else heldModifiers.delete(name);
+      setToggleAppearance(button, next);
+      status.textContent = next ? `Remote ${name} held. Click again to release.` : `Remote ${name} released.`;
+    };
+    const releaseModifiers = () => {
+      if (!rfb) return;
+      for (const [name, modifier] of heldModifiers) {
+        rfb.sendKey(modifier.keysym, modifier.code, false);
+        setToggleAppearance(modifier.button, false);
+        heldModifiers.delete(name);
+      }
+      status.textContent = "Remote modifier keys released.";
     };
     const reportFramebuffer = (stage) => {
       const canvas = screen.querySelector("canvas");
@@ -17624,12 +17669,17 @@
       }
       status.textContent = "Fit to panel.";
     });
+    pan.addEventListener("click", () => setPanMode(!panMode));
     panLeft.addEventListener("click", () => panBy(-Math.max(160, screen.clientWidth * 0.7), 0));
     panRight.addEventListener("click", () => panBy(Math.max(160, screen.clientWidth * 0.7), 0));
     panUp.addEventListener("click", () => panBy(0, -Math.max(120, screen.clientHeight * 0.7)));
     panDown.addEventListener("click", () => panBy(0, Math.max(120, screen.clientHeight * 0.7)));
+    control.addEventListener("click", () => toggleModifier(control, "Control", import_keysym.default.XK_Control_L, "ControlLeft"));
+    alt.addEventListener("click", () => toggleModifier(alt, "Alt", import_keysym.default.XK_Alt_L, "AltLeft"));
+    superKey.addEventListener("click", () => toggleModifier(superKey, "Super", import_keysym.default.XK_Super_L, "MetaLeft"));
+    releaseKeys.addEventListener("click", releaseModifiers);
     screen.addEventListener("pointerdown", (event) => {
-      if (!event.altKey || event.button !== 0 || !rfb) return;
+      if (!panMode && !event.altKey || event.button !== 0 || !rfb) return;
       const viewport = enablePan();
       if (!viewport) return;
       event.preventDefault();
@@ -17684,6 +17734,7 @@
       rfb.addEventListener("connect", (event) => {
         connected = true;
         api.dismissPrompts();
+        setPanMode(false);
         status.textContent = `Connected: ${event.detail?.name || "VNC server"}; waiting for remote framebuffer\u2026`;
         overlay.focus();
         requestAnimationFrame(() => {
@@ -17699,6 +17750,8 @@
         }, 750);
       });
       rfb.addEventListener("disconnect", (event) => {
+        for (const modifier of heldModifiers.values()) setToggleAppearance(modifier.button, false);
+        heldModifiers.clear();
         status.textContent = event.detail?.clean ? "Disconnected." : "Connection closed unexpectedly. Check Plugin Activity.";
         api.log(`noVNC disconnected: clean=${Boolean(event.detail?.clean)}`);
       });
