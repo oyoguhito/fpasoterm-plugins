@@ -15,6 +15,7 @@
     "ports": "npm run build --silent && node dist/ports.js",
     "index": "npm run ports -- index --check",
     "build:novnc-port": "node scripts/build-novnc-port.js",
+    "configure:novnc-port": "node scripts/configure-novnc-port.js",
     "reset:novnc-port": "node scripts/reset-novnc-port.js"
   },
   "engines": {
