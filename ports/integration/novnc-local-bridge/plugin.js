@@ -17612,6 +17612,11 @@
     };
     const display = () => rfb?._display;
     const viewport = () => display()?._viewportLoc;
+    const fittedScale = () => {
+      const remote = display();
+      if (!remote?.width || !remote?.height) return 1;
+      return Math.min(screen.clientWidth / remote.width, screen.clientHeight / remote.height);
+    };
     const drawNavigator = () => {
       const remote = display();
       const position = viewport();
@@ -17637,7 +17642,7 @@
     const enablePan = (preserveFitScale = false) => {
       if (!rfb) return null;
       const remote = display();
-      if (preserveFitScale && rfb.scaleViewport && remote?.scale > 0) zoom = remote.scale;
+      if (preserveFitScale && rfb.scaleViewport) zoom = fittedScale();
       rfb.scaleViewport = false;
       rfb.clipViewport = true;
       if (remote && zoom > 0) {
@@ -17788,8 +17793,7 @@
         rfb.clipViewport = false;
         rfb.scaleViewport = true;
         requestAnimationFrame(() => {
-          const fitScale = display()?.scale;
-          if (fitScale > 0) zoom = fitScale;
+          zoom = fittedScale();
         });
       }
       setPanMode(false);
@@ -17801,10 +17805,10 @@
       navigator2.style.display = navigator2.style.display === "none" ? "block" : "none";
       if (navigator2.style.display !== "none") drawNavigator();
     });
-    panLeft.addEventListener("click", () => panBy(-Math.max(160, screen.clientWidth * 0.7), 0));
-    panRight.addEventListener("click", () => panBy(Math.max(160, screen.clientWidth * 0.7), 0));
-    panUp.addEventListener("click", () => panBy(0, -Math.max(120, screen.clientHeight * 0.7)));
-    panDown.addEventListener("click", () => panBy(0, Math.max(120, screen.clientHeight * 0.7)));
+    panLeft.addEventListener("click", () => panBy(-screen.clientWidth * 0.1, 0));
+    panRight.addEventListener("click", () => panBy(screen.clientWidth * 0.1, 0));
+    panUp.addEventListener("click", () => panBy(0, -screen.clientHeight * 0.1));
+    panDown.addEventListener("click", () => panBy(0, screen.clientHeight * 0.1));
     navigator2.addEventListener("click", (event) => {
       if (zoom < 1.5) {
         zoom = 1.5;
@@ -17901,8 +17905,7 @@
         removePrefixListener = () => window.removeEventListener("keydown", prefixHandler, true);
         requestAnimationFrame(() => {
           rfb.scaleViewport = true;
-          const fitScale = display()?.scale;
-          if (fitScale > 0) zoom = fitScale;
+          zoom = fittedScale();
           const details = reportFramebuffer("connected");
           status.textContent = `Connected: ${event.detail?.name || "VNC server"} (${details.framebuffer})`;
         });
