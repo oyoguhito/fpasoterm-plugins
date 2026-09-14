@@ -17538,6 +17538,33 @@
   var import_rfb = __toESM(require_rfb());
   var import_keysym = __toESM(require_keysym());
   var api = window.fpasotermPluginApi;
+  if (!import_rfb.default.prototype.__fpasotermScreenLayoutCapture) {
+    const handleExtendedDesktopSize = import_rfb.default.prototype._handleExtendedDesktopSize;
+    import_rfb.default.prototype._handleExtendedDesktopSize = function captureScreenLayout() {
+      const queue = this._sock?._rQ;
+      const offset = this._sock?._rQi;
+      const count = Number.isInteger(offset) && queue ? queue[offset] : 0;
+      const bytes = 4 + count * 16;
+      if (count > 0 && queue && queue.length - offset >= bytes) {
+        const view = new DataView(queue.buffer, queue.byteOffset + offset, bytes);
+        const screens = [];
+        for (let index = 0; index < count; index += 1) {
+          const base = 4 + index * 16;
+          screens.push({
+            id: view.getUint32(base),
+            x: view.getUint16(base + 4),
+            y: view.getUint16(base + 6),
+            width: view.getUint16(base + 8),
+            height: view.getUint16(base + 10),
+            flags: view.getUint32(base + 12)
+          });
+        }
+        this._fpasotermScreenLayout = screens;
+      }
+      return handleExtendedDesktopSize.call(this);
+    };
+    import_rfb.default.prototype.__fpasotermScreenLayoutCapture = true;
+  }
   api.registerCommand("novnc-local-bridge", "Open noVNC local bridge (test)", async () => {
     const overlay = api.openElementOverlay({ title: "noVNC local bridge (test)", width: 1100, height: 720 });
     const status = document.createElement("p");
@@ -17548,6 +17575,7 @@
     const pan = document.createElement("button");
     const screenOne = document.createElement("button");
     const screenTwo = document.createElement("button");
+    const nextScreen = document.createElement("button");
     const overview = document.createElement("button");
     const panLeft = document.createElement("button");
     const panUp = document.createElement("button");
@@ -17557,6 +17585,7 @@
     const alt = document.createElement("button");
     const superKey = document.createElement("button");
     const releaseKeys = document.createElement("button");
+    const shortcut = document.createElement("button");
     const screen = document.createElement("div");
     const panCapture = document.createElement("div");
     const navigator2 = document.createElement("canvas");
@@ -17577,6 +17606,7 @@
       [pan, "Pan"],
       [screenOne, "Screen 1"],
       [screenTwo, "Screen 2"],
+      [nextScreen, "Next screen"],
       [overview, "Overview"],
       [panLeft, "\u2190"],
       [panUp, "\u2191"],
@@ -17585,7 +17615,8 @@
       [control, "Ctrl"],
       [alt, "Alt"],
       [superKey, "Super"],
-      [releaseKeys, "Release"]
+      [releaseKeys, "Release"],
+      [shortcut, "Shortcut"]
     ]) {
       button.type = "button";
       button.textContent = label;
@@ -17598,12 +17629,14 @@
     pan.title = "Toggle local drag-to-pan mode";
     screenOne.title = "Show the first (top-left) remote screen";
     screenTwo.title = "Show the second (bottom-right) remote screen";
+    nextScreen.title = "Show the next remote monitor";
     overview.title = "Show a clickable overview of the complete remote desktop";
     control.title = "Toggle remote Control key";
     alt.title = "Toggle remote Alt key";
     superKey.title = "Toggle remote Super (Command / Windows) key";
     releaseKeys.title = "Release all toggled remote modifier keys";
-    toolbar.append(status, zoomOut, zoomIn, fit, pan, screenOne, screenTwo, overview, panLeft, panUp, panDown, panRight, control, alt, superKey, releaseKeys);
+    shortcut.title = "Send a shortcut such as Super+Shift+B without using physical modifier keys";
+    toolbar.append(status, zoomOut, zoomIn, fit, pan, screenOne, screenTwo, nextScreen, overview, panLeft, panUp, panDown, panRight, control, alt, superKey, releaseKeys, shortcut);
     screen.append(panCapture, navigator2);
     overlay.element.replaceChildren(toolbar, screen);
     status.textContent = "Waiting for connection confirmation\u2026";
@@ -17612,6 +17645,7 @@
     let zoom = 1;
     let dragPan = null;
     let panMode = false;
+    let selectedScreen = 0;
     const heldModifiers = /* @__PURE__ */ new Map();
     const setToggleAppearance = (button, enabled) => {
       button.setAttribute("aria-pressed", String(enabled));
@@ -17662,18 +17696,31 @@
       api.log(`noVNC pan: x=${position.x}, y=${position.y}, viewport=${position.w}x${position.h}, framebuffer=${remote.width}x${remote.height}`);
       status.textContent = "Panning at 100%. Enable Pan to drag with the mouse.";
     };
-    const showScreen = (number) => {
-      if (zoom < 1.5) zoom = 1.5;
+    const screenLayout = () => Array.isArray(rfb?._fpasotermScreenLayout) ? rfb._fpasotermScreenLayout : [];
+    const fitScreen = (index) => {
+      const layouts = screenLayout();
+      const region = layouts[index];
+      if (!region) {
+        status.textContent = "The VNC server did not provide this monitor layout. Use Overview to choose a position.";
+        api.log(`noVNC monitor ${index + 1} unavailable; received ${layouts.length} monitor records`);
+        return;
+      }
+      selectedScreen = index;
+      zoom = Math.min(2.5, Math.max(0.25, Math.min(screen.clientWidth / region.width, screen.clientHeight / region.height)));
       applyZoom();
       const remote = enablePan();
       const position = viewport();
       if (!remote || !position) return;
-      const targetX = number === 1 ? 0 : remote.width - position.w;
-      const targetY = number === 1 ? 0 : remote.height - position.h;
-      remote.viewportChangePos(targetX - position.x, targetY - position.y);
+      remote.viewportChangePos(
+        region.x + (region.width - position.w) / 2 - position.x,
+        region.y + (region.height - position.h) / 2 - position.y
+      );
       drawNavigator();
-      api.log(`noVNC screen ${number}: x=${viewport().x}, y=${viewport().y}`);
-      status.textContent = number === 1 ? "Screen 1 (top-left) selected." : "Screen 2 (bottom-right) selected.";
+      api.log(`noVNC monitor ${index + 1}: ${region.width}x${region.height}+${region.x}+${region.y}, zoom=${Math.round(zoom * 100)}%`);
+      status.textContent = `Screen ${index + 1}: ${region.width}\xD7${region.height} fitted.`;
+    };
+    const showScreen = (number) => {
+      fitScreen(number - 1);
     };
     const setPanMode = (enabled) => {
       panMode = enabled;
@@ -17698,6 +17745,37 @@
         heldModifiers.delete(name);
       }
       status.textContent = "Remote modifier keys released.";
+    };
+    const sendShortcut = async () => {
+      const value = await api.promptText({
+        title: "Send remote shortcut",
+        message: "Enter a shortcut, for example Super+Shift+B. It is sent directly to VNC without using local modifier keys.",
+        approve: "Send"
+      });
+      if (value === null || !rfb) return;
+      const tokens = value.split("+").map((token) => token.trim()).filter(Boolean);
+      const key = tokens.pop();
+      const modifierMap = {
+        ctrl: [import_keysym.default.XK_Control_L, "ControlLeft"],
+        control: [import_keysym.default.XK_Control_L, "ControlLeft"],
+        alt: [import_keysym.default.XK_Alt_L, "AltLeft"],
+        super: [import_keysym.default.XK_Super_L, "MetaLeft"],
+        meta: [import_keysym.default.XK_Super_L, "MetaLeft"],
+        win: [import_keysym.default.XK_Super_L, "MetaLeft"],
+        shift: [import_keysym.default.XK_Shift_L, "ShiftLeft"]
+      };
+      const modifiers = tokens.map((token) => modifierMap[token.toLowerCase()]).filter(Boolean);
+      if (!key || !/^[A-Za-z]$/.test(key) || modifiers.length !== tokens.length) {
+        status.textContent = "Shortcut format: Super+Shift+B (letters A-Z are supported).";
+        return;
+      }
+      for (const [keysym, code] of modifiers) rfb.sendKey(keysym, code, true);
+      const character = key.toUpperCase();
+      rfb.sendKey(character.codePointAt(0), `Key${character}`, true);
+      rfb.sendKey(character.codePointAt(0), `Key${character}`, false);
+      for (const [keysym, code] of modifiers.reverse()) rfb.sendKey(keysym, code, false);
+      api.log(`noVNC shortcut sent: ${tokens.join("+")}+${character}`);
+      status.textContent = `Shortcut sent: ${tokens.join("+")}+${character}`;
     };
     const reportFramebuffer = (stage) => {
       const remote = display();
@@ -17734,6 +17812,14 @@
     pan.addEventListener("click", () => setPanMode(!panMode));
     screenOne.addEventListener("click", () => showScreen(1));
     screenTwo.addEventListener("click", () => showScreen(2));
+    nextScreen.addEventListener("click", () => {
+      const layouts = screenLayout();
+      if (layouts.length === 0) {
+        fitScreen(0);
+        return;
+      }
+      fitScreen((selectedScreen + 1) % layouts.length);
+    });
     overview.addEventListener("click", () => {
       navigator2.style.display = navigator2.style.display === "none" ? "block" : "none";
       if (navigator2.style.display !== "none") drawNavigator();
@@ -17746,6 +17832,9 @@
     alt.addEventListener("click", () => toggleModifier(alt, "Alt", import_keysym.default.XK_Alt_L, "AltLeft"));
     superKey.addEventListener("click", () => toggleModifier(superKey, "Super", import_keysym.default.XK_Super_L, "MetaLeft"));
     releaseKeys.addEventListener("click", releaseModifiers);
+    shortcut.addEventListener("click", () => {
+      sendShortcut();
+    });
     navigator2.addEventListener("click", (event) => {
       if (zoom < 1.5) {
         zoom = 1.5;
@@ -17823,6 +17912,10 @@
           rfb.scaleViewport = true;
           const details = reportFramebuffer("connected");
           status.textContent = `Connected: ${event.detail?.name || "VNC server"} (${details.framebuffer})`;
+          window.setTimeout(() => {
+            const layouts = screenLayout();
+            api.log(`noVNC monitor layout: ${layouts.length ? layouts.map((item, index) => `${index + 1}=${item.width}x${item.height}+${item.x}+${item.y}`).join(", ") : "not provided"}`);
+          }, 100);
         });
         window.setTimeout(() => {
           const details = reportFramebuffer("after connection");
