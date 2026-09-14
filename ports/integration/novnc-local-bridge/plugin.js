@@ -17545,7 +17545,6 @@
     const zoomOut = document.createElement("button");
     const zoomIn = document.createElement("button");
     const fit = document.createElement("button");
-    const pan = document.createElement("button");
     const overview = document.createElement("button");
     const panLeft = document.createElement("button");
     const panUp = document.createElement("button");
@@ -17574,7 +17573,6 @@
       [zoomOut, "Zoom \u2212"],
       [zoomIn, "Zoom +"],
       [fit, "Fit"],
-      [pan, "Pan"],
       [overview, "Overview"],
       [panLeft, "\u2190"],
       [panUp, "\u2191"],
@@ -17589,9 +17587,8 @@
     panUp.title = "Pan up";
     panDown.title = "Pan down";
     panRight.title = "Pan right";
-    pan.title = "Toggle local drag-to-pan mode";
     overview.title = "Show a clickable overview of the complete remote desktop";
-    toolbar.append(status, zoomOut, zoomIn, fit, pan, overview, panLeft, panUp, panDown, panRight);
+    toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight);
     screen.append(panCapture, navigator2);
     overlay.element.replaceChildren(toolbar, screen);
     status.textContent = "Waiting for connection confirmation\u2026";
@@ -17599,7 +17596,6 @@
     let connected = false;
     let zoom = 1;
     let dragPan = null;
-    let panMode = false;
     let lastPointer = { x: 24, y: 24 };
     let prefixTimer = null;
     let prefixPalette = null;
@@ -17661,12 +17657,6 @@
       api.log(`noVNC pan: x=${position.x}, y=${position.y}, viewport=${position.w}x${position.h}, framebuffer=${remote.width}x${remote.height}`);
       status.textContent = "Panning at 100%. Enable Pan to drag with the mouse.";
     };
-    const setPanMode = (enabled) => {
-      panMode = enabled;
-      setToggleAppearance(pan, panMode);
-      panCapture.style.display = panMode ? "block" : "none";
-      status.textContent = panMode ? "Pan mode enabled: drag the remote view to move it. Click Pan again to send normal mouse drags." : "Pan mode disabled: mouse drags are sent to the remote desktop.";
-    };
     const toggleModifier = (button, name, keysym, code) => {
       if (!rfb) return;
       const next = !heldModifiers.has(name);
@@ -17698,6 +17688,17 @@
       api.log("noVNC shortcut sent: Super+Shift+B (client Ctrl+Shift+B)");
       status.textContent = "Shortcut sent: Super+Shift+B";
     };
+    const sendCtrlBB = () => {
+      if (!rfb) return;
+      rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", true);
+      rfb.sendKey("B".codePointAt(0), "KeyB", true);
+      rfb.sendKey("B".codePointAt(0), "KeyB", false);
+      rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", false);
+      rfb.sendKey("B".codePointAt(0), "KeyB", true);
+      rfb.sendKey("B".codePointAt(0), "KeyB", false);
+      api.log("noVNC shortcut sent: Ctrl+B, B");
+      status.textContent = "Shortcut sent: Ctrl+B, B";
+    };
     const dismissPrefixPalette = () => {
       if (prefixTimer) {
         window.clearTimeout(prefixTimer);
@@ -17713,6 +17714,7 @@
       const keyButtons = [control, alt, shift, superKey];
       const releaseButton = releaseKeys;
       const escapeButton = escapeKey;
+      const tmuxButton = document.createElement("button");
       const closeButton = document.createElement("button");
       control.textContent = "Ctrl";
       alt.textContent = "Alt";
@@ -17720,11 +17722,12 @@
       superKey.textContent = "Super";
       releaseButton.textContent = "Release";
       escapeButton.textContent = "Esc";
+      tmuxButton.textContent = "Ctrl+B B";
       closeButton.textContent = "Close";
       palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
       palette.tabIndex = 0;
       palette.setAttribute("aria-label", "VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord");
-      for (const button of [...keyButtons, releaseButton, escapeButton, closeButton]) {
+      for (const button of [...keyButtons, releaseButton, escapeButton, tmuxButton, closeButton]) {
         button.type = "button";
         button.style.cssText = "padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc";
       }
@@ -17737,6 +17740,10 @@
         rfb.sendKey(import_keysym.default.XK_Escape, "Escape", true);
         rfb.sendKey(import_keysym.default.XK_Escape, "Escape", false);
         api.log("noVNC palette key sent: Escape");
+        dismissPrefixPalette();
+      };
+      tmuxButton.onclick = () => {
+        sendCtrlBB();
         dismissPrefixPalette();
       };
       closeButton.onclick = dismissPrefixPalette;
@@ -17757,7 +17764,7 @@
         releaseModifiers();
         dismissPrefixPalette();
       });
-      palette.append(title, ...keyButtons, releaseButton, escapeButton, closeButton);
+      palette.append(title, ...keyButtons, releaseButton, escapeButton, tmuxButton, closeButton);
       screen.append(palette);
       prefixPalette = palette;
       palette.focus();
@@ -17796,11 +17803,9 @@
           zoom = fittedScale();
         });
       }
-      setPanMode(false);
       navigator2.style.display = "none";
       status.textContent = "Fit to panel.";
     });
-    pan.addEventListener("click", () => setPanMode(!panMode));
     overview.addEventListener("click", () => {
       navigator2.style.display = navigator2.style.display === "none" ? "block" : "none";
       if (navigator2.style.display !== "none") drawNavigator();
@@ -17825,7 +17830,7 @@
       status.textContent = "Overview position selected.";
     });
     panCapture.addEventListener("pointerdown", (event) => {
-      if (!panMode || event.button !== 0 || !rfb) return;
+      if (event.button !== 0 || !rfb) return;
       if (!enablePan(true)) return;
       event.preventDefault();
       dragPan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
@@ -17879,7 +17884,6 @@
       rfb.addEventListener("connect", (event) => {
         connected = true;
         api.dismissPrompts();
-        setPanMode(false);
         status.textContent = `Connected: ${event.detail?.name || "VNC server"}; waiting for remote framebuffer\u2026`;
         overlay.focus();
         removePrefixListener();

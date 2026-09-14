@@ -10,7 +10,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const zoomOut = document.createElement('button');
   const zoomIn = document.createElement('button');
   const fit = document.createElement('button');
-  const pan = document.createElement('button');
   const overview = document.createElement('button');
   const panLeft = document.createElement('button');
   const panUp = document.createElement('button');
@@ -41,7 +40,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   navigator.width = 220; navigator.height = 124;
   navigator.style.cssText = 'display:none;position:absolute;right:12px;bottom:12px;z-index:20;width:220px;height:124px;border:2px solid #9ac7ee;background:#111;cursor:crosshair';
   for (const [button, label] of [
-    [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [pan, 'Pan'], [overview, 'Overview'],
+    [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [overview, 'Overview'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
   ]) {
     button.type = 'button'; button.textContent = label;
@@ -49,9 +48,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   }
   panLeft.title = 'Pan left'; panUp.title = 'Pan up';
   panDown.title = 'Pan down'; panRight.title = 'Pan right';
-  pan.title = 'Toggle local drag-to-pan mode';
   overview.title = 'Show a clickable overview of the complete remote desktop';
-  toolbar.append(status, zoomOut, zoomIn, fit, pan, overview, panLeft, panUp, panDown, panRight);
+  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight);
   screen.append(panCapture, navigator);
   overlay.element.replaceChildren(toolbar, screen);
   status.textContent = 'Waiting for connection confirmation…';
@@ -59,7 +57,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let connected = false;
   let zoom = 1;
   let dragPan = null;
-  let panMode = false;
   let lastPointer = { x: 24, y: 24 };
   let prefixTimer = null;
   let prefixPalette = null;
@@ -125,14 +122,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     api.log(`noVNC pan: x=${position.x}, y=${position.y}, viewport=${position.w}x${position.h}, framebuffer=${remote.width}x${remote.height}`);
     status.textContent = 'Panning at 100%. Enable Pan to drag with the mouse.';
   };
-  const setPanMode = (enabled) => {
-    panMode = enabled;
-    setToggleAppearance(pan, panMode);
-    panCapture.style.display = panMode ? 'block' : 'none';
-    status.textContent = panMode
-      ? 'Pan mode enabled: drag the remote view to move it. Click Pan again to send normal mouse drags.'
-      : 'Pan mode disabled: mouse drags are sent to the remote desktop.';
-  };
   const toggleModifier = (button, name, keysym, code) => {
     if (!rfb) return;
     const next = !heldModifiers.has(name);
@@ -166,6 +155,17 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     api.log('noVNC shortcut sent: Super+Shift+B (client Ctrl+Shift+B)');
     status.textContent = 'Shortcut sent: Super+Shift+B';
   };
+  const sendCtrlBB = () => {
+    if (!rfb) return;
+    rfb.sendKey(Keysyms.XK_Control_L, 'ControlLeft', true);
+    rfb.sendKey('B'.codePointAt(0), 'KeyB', true);
+    rfb.sendKey('B'.codePointAt(0), 'KeyB', false);
+    rfb.sendKey(Keysyms.XK_Control_L, 'ControlLeft', false);
+    rfb.sendKey('B'.codePointAt(0), 'KeyB', true);
+    rfb.sendKey('B'.codePointAt(0), 'KeyB', false);
+    api.log('noVNC shortcut sent: Ctrl+B, B');
+    status.textContent = 'Shortcut sent: Ctrl+B, B';
+  };
   const dismissPrefixPalette = () => {
     if (prefixTimer) { window.clearTimeout(prefixTimer); prefixTimer = null; }
     prefixPalette?.remove(); prefixPalette = null;
@@ -177,13 +177,14 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     const keyButtons = [control, alt, shift, superKey];
     const releaseButton = releaseKeys;
     const escapeButton = escapeKey;
+    const tmuxButton = document.createElement('button');
     const closeButton = document.createElement('button');
     control.textContent = 'Ctrl'; alt.textContent = 'Alt'; shift.textContent = 'Shift'; superKey.textContent = 'Super';
-    releaseButton.textContent = 'Release'; escapeButton.textContent = 'Esc'; closeButton.textContent = 'Close';
+    releaseButton.textContent = 'Release'; escapeButton.textContent = 'Esc'; tmuxButton.textContent = 'Ctrl+B B'; closeButton.textContent = 'Close';
     palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
     palette.tabIndex = 0;
     palette.setAttribute('aria-label', 'VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord');
-    for (const button of [...keyButtons, releaseButton, escapeButton, closeButton]) {
+    for (const button of [...keyButtons, releaseButton, escapeButton, tmuxButton, closeButton]) {
       button.type = 'button';
       button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
     }
@@ -198,6 +199,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       api.log('noVNC palette key sent: Escape');
       dismissPrefixPalette();
     };
+    tmuxButton.onclick = () => { sendCtrlBB(); dismissPrefixPalette(); };
     closeButton.onclick = dismissPrefixPalette;
     palette.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') { event.preventDefault(); dismissPrefixPalette(); return; }
@@ -210,7 +212,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       api.log(`noVNC palette key sent: ${character}`);
       releaseModifiers(); dismissPrefixPalette();
     });
-    palette.append(title, ...keyButtons, releaseButton, escapeButton, closeButton); screen.append(palette); prefixPalette = palette;
+    palette.append(title, ...keyButtons, releaseButton, escapeButton, tmuxButton, closeButton); screen.append(palette); prefixPalette = palette;
     palette.focus();
   };
   screen.addEventListener('pointermove', (event) => {
@@ -241,11 +243,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         zoom = fittedScale();
       });
     }
-    setPanMode(false);
     navigator.style.display = 'none';
     status.textContent = 'Fit to panel.';
   });
-  pan.addEventListener('click', () => setPanMode(!panMode));
   overview.addEventListener('click', () => {
     navigator.style.display = navigator.style.display === 'none' ? 'block' : 'none';
     if (navigator.style.display !== 'none') drawNavigator();
@@ -266,10 +266,11 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     drawNavigator();
     status.textContent = 'Overview position selected.';
   });
-  // Pan mode captures the local pointer. With Pan disabled, pointer drags are
-  // sent normally to the remote desktop for drag-and-drop.
+  // This dormant capture surface is kept out of the layout. Navigation uses
+  // Overview and small-step direction buttons, avoiding a disruptive switch
+  // from Fit scale to a panning viewport.
   panCapture.addEventListener('pointerdown', (event) => {
-    if (!panMode || event.button !== 0 || !rfb) return;
+    if (event.button !== 0 || !rfb) return;
     if (!enablePan(true)) return;
     event.preventDefault();
     dragPan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
@@ -317,7 +318,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     rfb.addEventListener('connect', (event) => {
       connected = true;
       api.dismissPrompts();
-      setPanMode(false);
       status.textContent = `Connected: ${event.detail?.name || 'VNC server'}; waiting for remote framebuffer…`;
       overlay.focus();
       removePrefixListener();
