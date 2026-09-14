@@ -63,6 +63,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let removePrefixListener = () => {};
   let releaseHostKeyCapture = () => {};
   let pausedPointerHandlers = null;
+  let paletteViewOnly = null;
   const heldModifiers = new Map();
   const setToggleAppearance = (button, enabled) => {
     button.setAttribute('aria-pressed', String(enabled));
@@ -143,12 +144,21 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     heldModifiers.clear();
     status.textContent = 'Remote modifier keys released.';
   };
-  const sendChord = (modifiers, character, code) => {
+  const sendChord = (modifiers, character, code, keysym = character.codePointAt(0)) => {
     if (!rfb) return;
-    for (const modifier of modifiers) rfb.sendKey(modifier.keysym, modifier.code, true);
-    rfb.sendKey(character.codePointAt(0), code, true);
-    rfb.sendKey(character.codePointAt(0), code, false);
-    for (const modifier of [...modifiers].reverse()) rfb.sendKey(modifier.keysym, modifier.code, false);
+    const wasViewOnly = rfb._viewOnly;
+    // VNC Shortcuts intentionally blocks all mouse traffic with viewOnly,
+    // but its reviewed buttons must still be able to send one explicit key
+    // sequence. Keep that exception scoped to this synchronous operation.
+    rfb._viewOnly = false;
+    try {
+      for (const modifier of modifiers) rfb.sendKey(modifier.keysym, modifier.code, true);
+      rfb.sendKey(keysym, code, true);
+      rfb.sendKey(keysym, code, false);
+      for (const modifier of [...modifiers].reverse()) rfb.sendKey(modifier.keysym, modifier.code, false);
+    } finally {
+      rfb._viewOnly = wasViewOnly;
+    }
   };
   const sendCtrlChord = (character, includeShift = false) => {
     const upper = character.toUpperCase();
@@ -163,14 +173,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     if (!rfb) return;
     // Ctrl may have reached noVNC before Shift armed the local prefix. Release
     // it before sending the requested remote-only chord.
-    rfb.sendKey(Keysyms.XK_Control_L, 'ControlLeft', false);
-    rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
-    rfb.sendKey(Keysyms.XK_Super_L, 'MetaLeft', true);
-    rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', true);
-    rfb.sendKey('B'.codePointAt(0), 'KeyB', true);
-    rfb.sendKey('B'.codePointAt(0), 'KeyB', false);
-    rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
-    rfb.sendKey(Keysyms.XK_Super_L, 'MetaLeft', false);
+    sendChord([
+      { keysym: Keysyms.XK_Super_L, code: 'MetaLeft' },
+      { keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' },
+    ], 'B', 'KeyB');
     api.log('noVNC shortcut sent: Super+Shift+B (client Ctrl+Shift+B)');
     status.textContent = 'Shortcut sent: Super+Shift+B';
   };
@@ -179,6 +185,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     prefixPalette?.remove(); prefixPalette = null;
     // Restore normal pointer control only after the shortcut UI is gone.
     if (rfb?._canvas) rfb._canvas.style.pointerEvents = '';
+    if (paletteViewOnly !== null && rfb) {
+      rfb._viewOnly = paletteViewOnly;
+      paletteViewOnly = null;
+    }
     if (pausedPointerHandlers) {
       const { canvas, handler, focusHandler } = pausedPointerHandlers;
       for (const eventName of ['mousedown', 'mouseup', 'mousemove', 'click', 'contextmenu']) {
@@ -195,6 +205,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     // hit-testing for the entire palette lifetime to keep the remote cursor
     // exactly where it was.
     if (rfb._canvas) rfb._canvas.style.pointerEvents = 'none';
+    paletteViewOnly = rfb._viewOnly;
+    rfb._viewOnly = true;
     const canvas = rfb._canvas;
     const handler = rfb._eventHandlers?.handleMouse;
     const focusHandler = rfb._eventHandlers?.focusCanvas;
@@ -233,8 +245,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     superKey.onclick = () => toggleModifier(superKey, 'Super', Keysyms.XK_Super_L, 'MetaLeft');
     releaseButton.onclick = releaseModifiers;
     escapeButton.onclick = () => {
-      rfb.sendKey(Keysyms.XK_Escape, 'Escape', true);
-      rfb.sendKey(Keysyms.XK_Escape, 'Escape', false);
+      sendChord([], '', 'Escape', Keysyms.XK_Escape);
       api.log('noVNC palette key sent: Escape');
       dismissPrefixPalette();
     };

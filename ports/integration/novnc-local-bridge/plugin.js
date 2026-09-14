@@ -17604,6 +17604,7 @@
     let releaseHostKeyCapture = () => {
     };
     let pausedPointerHandlers = null;
+    let paletteViewOnly = null;
     const heldModifiers = /* @__PURE__ */ new Map();
     const setToggleAppearance = (button, enabled) => {
       button.setAttribute("aria-pressed", String(enabled));
@@ -17676,12 +17677,18 @@
       heldModifiers.clear();
       status.textContent = "Remote modifier keys released.";
     };
-    const sendChord = (modifiers, character, code) => {
+    const sendChord = (modifiers, character, code, keysym = character.codePointAt(0)) => {
       if (!rfb) return;
-      for (const modifier of modifiers) rfb.sendKey(modifier.keysym, modifier.code, true);
-      rfb.sendKey(character.codePointAt(0), code, true);
-      rfb.sendKey(character.codePointAt(0), code, false);
-      for (const modifier of [...modifiers].reverse()) rfb.sendKey(modifier.keysym, modifier.code, false);
+      const wasViewOnly = rfb._viewOnly;
+      rfb._viewOnly = false;
+      try {
+        for (const modifier of modifiers) rfb.sendKey(modifier.keysym, modifier.code, true);
+        rfb.sendKey(keysym, code, true);
+        rfb.sendKey(keysym, code, false);
+        for (const modifier of [...modifiers].reverse()) rfb.sendKey(modifier.keysym, modifier.code, false);
+      } finally {
+        rfb._viewOnly = wasViewOnly;
+      }
     };
     const sendCtrlChord = (character, includeShift = false) => {
       const upper = character.toUpperCase();
@@ -17694,14 +17701,10 @@
     };
     const sendSuperShiftB = () => {
       if (!rfb) return;
-      rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", false);
-      rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
-      rfb.sendKey(import_keysym.default.XK_Super_L, "MetaLeft", true);
-      rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", true);
-      rfb.sendKey("B".codePointAt(0), "KeyB", true);
-      rfb.sendKey("B".codePointAt(0), "KeyB", false);
-      rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
-      rfb.sendKey(import_keysym.default.XK_Super_L, "MetaLeft", false);
+      sendChord([
+        { keysym: import_keysym.default.XK_Super_L, code: "MetaLeft" },
+        { keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" }
+      ], "B", "KeyB");
       api.log("noVNC shortcut sent: Super+Shift+B (client Ctrl+Shift+B)");
       status.textContent = "Shortcut sent: Super+Shift+B";
     };
@@ -17713,6 +17716,10 @@
       prefixPalette?.remove();
       prefixPalette = null;
       if (rfb?._canvas) rfb._canvas.style.pointerEvents = "";
+      if (paletteViewOnly !== null && rfb) {
+        rfb._viewOnly = paletteViewOnly;
+        paletteViewOnly = null;
+      }
       if (pausedPointerHandlers) {
         const { canvas, handler, focusHandler } = pausedPointerHandlers;
         for (const eventName of ["mousedown", "mouseup", "mousemove", "click", "contextmenu"]) {
@@ -17725,6 +17732,8 @@
     const showPrefixPalette = () => {
       if (prefixPalette || !rfb) return;
       if (rfb._canvas) rfb._canvas.style.pointerEvents = "none";
+      paletteViewOnly = rfb._viewOnly;
+      rfb._viewOnly = true;
       const canvas = rfb._canvas;
       const handler = rfb._eventHandlers?.handleMouse;
       const focusHandler = rfb._eventHandlers?.focusCanvas;
@@ -17763,8 +17772,7 @@
       superKey.onclick = () => toggleModifier(superKey, "Super", import_keysym.default.XK_Super_L, "MetaLeft");
       releaseButton.onclick = releaseModifiers;
       escapeButton.onclick = () => {
-        rfb.sendKey(import_keysym.default.XK_Escape, "Escape", true);
-        rfb.sendKey(import_keysym.default.XK_Escape, "Escape", false);
+        sendChord([], "", "Escape", import_keysym.default.XK_Escape);
         api.log("noVNC palette key sent: Escape");
         dismissPrefixPalette();
       };
