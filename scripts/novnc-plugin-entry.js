@@ -3,34 +3,6 @@ import Keysyms from '@novnc/novnc/lib/input/keysym.js';
 
 const api = window.fpasotermPluginApi;
 
-// noVNC consumes ExtendedDesktopSize records but only retains the first
-// screen's id. Keep a copy of the monitor rectangles before noVNC advances
-// its socket queue so plugin controls can fit a real monitor, rather than an
-// arbitrary portion of the combined framebuffer.
-if (!RFB.prototype.__fpasotermScreenLayoutCapture) {
-  const handleExtendedDesktopSize = RFB.prototype._handleExtendedDesktopSize;
-  RFB.prototype._handleExtendedDesktopSize = function captureScreenLayout() {
-    const queue = this._sock?._rQ;
-    const offset = this._sock?._rQi;
-    const count = Number.isInteger(offset) && queue ? queue[offset] : 0;
-    const bytes = 4 + count * 16;
-    if (count > 0 && queue && queue.length - offset >= bytes) {
-      const view = new DataView(queue.buffer, queue.byteOffset + offset, bytes);
-      const screens = [];
-      for (let index = 0; index < count; index += 1) {
-        const base = 4 + index * 16;
-        screens.push({
-          id: view.getUint32(base), x: view.getUint16(base + 4), y: view.getUint16(base + 6),
-          width: view.getUint16(base + 8), height: view.getUint16(base + 10), flags: view.getUint32(base + 12),
-        });
-      }
-      this._fpasotermScreenLayout = screens;
-    }
-    return handleExtendedDesktopSize.call(this);
-  };
-  RFB.prototype.__fpasotermScreenLayoutCapture = true;
-}
-
 api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', async () => {
   const overlay = api.openElementOverlay({ title: 'noVNC local bridge (test)', width: 1100, height: 720 });
   const status = document.createElement('p');
@@ -39,9 +11,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const zoomIn = document.createElement('button');
   const fit = document.createElement('button');
   const pan = document.createElement('button');
-  const screenOne = document.createElement('button');
-  const screenTwo = document.createElement('button');
-  const nextScreen = document.createElement('button');
   const overview = document.createElement('button');
   const panLeft = document.createElement('button');
   const panUp = document.createElement('button');
@@ -49,9 +18,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const panRight = document.createElement('button');
   const control = document.createElement('button');
   const alt = document.createElement('button');
+  const shift = document.createElement('button');
   const superKey = document.createElement('button');
   const releaseKeys = document.createElement('button');
-  const shortcut = document.createElement('button');
   const screen = document.createElement('div');
   const panCapture = document.createElement('div');
   const navigator = document.createElement('canvas');
@@ -71,9 +40,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   navigator.width = 220; navigator.height = 124;
   navigator.style.cssText = 'display:none;position:absolute;right:12px;bottom:12px;z-index:20;width:220px;height:124px;border:2px solid #9ac7ee;background:#111;cursor:crosshair';
   for (const [button, label] of [
-    [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [pan, 'Pan'], [screenOne, 'Screen 1'], [screenTwo, 'Screen 2'], [nextScreen, 'Next screen'], [overview, 'Overview'],
+    [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [pan, 'Pan'], [overview, 'Overview'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
-    [control, 'Ctrl'], [alt, 'Alt'], [superKey, 'Super'], [releaseKeys, 'Release'], [shortcut, 'Shortcut'],
   ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
@@ -81,15 +49,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panLeft.title = 'Pan left'; panUp.title = 'Pan up';
   panDown.title = 'Pan down'; panRight.title = 'Pan right';
   pan.title = 'Toggle local drag-to-pan mode';
-  screenOne.title = 'Show the first (top-left) remote screen';
-  screenTwo.title = 'Show the second (bottom-right) remote screen';
-  nextScreen.title = 'Show the next remote monitor';
   overview.title = 'Show a clickable overview of the complete remote desktop';
-  control.title = 'Toggle remote Control key'; alt.title = 'Toggle remote Alt key';
-  superKey.title = 'Toggle remote Super (Command / Windows) key';
-  releaseKeys.title = 'Release all toggled remote modifier keys';
-  shortcut.title = 'Send a shortcut such as Super+Shift+B without using physical modifier keys';
-  toolbar.append(status, zoomOut, zoomIn, fit, pan, screenOne, screenTwo, nextScreen, overview, panLeft, panUp, panDown, panRight, control, alt, superKey, releaseKeys, shortcut);
+  toolbar.append(status, zoomOut, zoomIn, fit, pan, overview, panLeft, panUp, panDown, panRight);
   screen.append(panCapture, navigator);
   overlay.element.replaceChildren(toolbar, screen);
   status.textContent = 'Waiting for connection confirmation…';
@@ -98,7 +59,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let zoom = 1;
   let dragPan = null;
   let panMode = false;
-  let selectedScreen = 0;
   let lastPointer = { x: 24, y: 24 };
   let prefixTimer = null;
   let prefixPalette = null;
@@ -132,11 +92,15 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       Math.min(drawHeight, (position.h / remote.height) * drawHeight),
     );
   };
-  const enablePan = () => {
+  const enablePan = (preserveFitScale = false) => {
     if (!rfb) return null;
+    const remote = display();
+    // Preserve Fit's current visual scale before disabling automatic scaling.
+    // Previously this reset to 100%, which made simply enabling Pan look like
+    // an unexpected zoom-in.
+    if (preserveFitScale && rfb.scaleViewport && remote?.scale > 0) zoom = remote.scale;
     rfb.scaleViewport = false;
     rfb.clipViewport = true;
-    const remote = display();
     // A clipped noVNC viewport is an internal framebuffer region, not a DOM
     // scroll container. Resize that region for the desired visual zoom.
     if (remote && zoom > 0) {
@@ -147,39 +111,13 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     return display();
   };
   const panBy = (left, top) => {
-    const remote = enablePan();
+    const remote = enablePan(true);
     if (!remote) return;
     remote.viewportChangePos(left / zoom, top / zoom);
     drawNavigator();
     const position = viewport();
     api.log(`noVNC pan: x=${position.x}, y=${position.y}, viewport=${position.w}x${position.h}, framebuffer=${remote.width}x${remote.height}`);
     status.textContent = 'Panning at 100%. Enable Pan to drag with the mouse.';
-  };
-  const screenLayout = () => Array.isArray(rfb?._fpasotermScreenLayout) ? rfb._fpasotermScreenLayout : [];
-  const fitScreen = (index) => {
-    const layouts = screenLayout();
-    const region = layouts[index];
-    if (!region) {
-      status.textContent = 'The VNC server did not provide this monitor layout. Use Overview to choose a position.';
-      api.log(`noVNC monitor ${index + 1} unavailable; received ${layouts.length} monitor records`);
-      return;
-    }
-    selectedScreen = index;
-    zoom = Math.min(2.5, Math.max(0.25, Math.min(screen.clientWidth / region.width, screen.clientHeight / region.height)));
-    applyZoom();
-    const remote = enablePan();
-    const position = viewport();
-    if (!remote || !position) return;
-    remote.viewportChangePos(
-      region.x + (region.width - position.w) / 2 - position.x,
-      region.y + (region.height - position.h) / 2 - position.y,
-    );
-    drawNavigator();
-    api.log(`noVNC monitor ${index + 1}: ${region.width}x${region.height}+${region.x}+${region.y}, zoom=${Math.round(zoom * 100)}%`);
-    status.textContent = `Screen ${index + 1}: ${region.width}×${region.height} fitted.`;
-  };
-  const showScreen = (number) => {
-    fitScreen(number - 1);
   };
   const setPanMode = (enabled) => {
     panMode = enabled;
@@ -207,33 +145,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     }
     status.textContent = 'Remote modifier keys released.';
   };
-  const sendShortcut = async () => {
-    const value = await api.promptText({
-      title: 'Send remote shortcut',
-      message: 'Enter a shortcut, for example Super+Shift+B. It is sent directly to VNC without using local modifier keys.',
-      approve: 'Send',
-    });
-    if (value === null || !rfb) return;
-    const tokens = value.split('+').map((token) => token.trim()).filter(Boolean);
-    const key = tokens.pop();
-    const modifierMap = {
-      ctrl: [Keysyms.XK_Control_L, 'ControlLeft'], control: [Keysyms.XK_Control_L, 'ControlLeft'],
-      alt: [Keysyms.XK_Alt_L, 'AltLeft'], super: [Keysyms.XK_Super_L, 'MetaLeft'], meta: [Keysyms.XK_Super_L, 'MetaLeft'], win: [Keysyms.XK_Super_L, 'MetaLeft'],
-      shift: [Keysyms.XK_Shift_L, 'ShiftLeft'],
-    };
-    const modifiers = tokens.map((token) => modifierMap[token.toLowerCase()]).filter(Boolean);
-    if (!key || !/^[A-Za-z]$/.test(key) || modifiers.length !== tokens.length) {
-      status.textContent = 'Shortcut format: Super+Shift+B (letters A-Z are supported).';
-      return;
-    }
-    for (const [keysym, code] of modifiers) rfb.sendKey(keysym, code, true);
-    const character = key.toUpperCase();
-    rfb.sendKey(character.codePointAt(0), `Key${character}`, true);
-    rfb.sendKey(character.codePointAt(0), `Key${character}`, false);
-    for (const [keysym, code] of modifiers.reverse()) rfb.sendKey(keysym, code, false);
-    api.log(`noVNC shortcut sent: ${tokens.join('+')}+${character}`);
-    status.textContent = `Shortcut sent: ${tokens.join('+')}+${character}`;
-  };
   const sendSuperShiftB = () => {
     if (!rfb) return;
     // Ctrl may have reached noVNC before Shift armed the local prefix. Release
@@ -257,15 +168,37 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     if (prefixPalette || !rfb) return;
     const palette = document.createElement('div');
     const title = document.createElement('strong');
-    const sendButton = document.createElement('button');
+    const keyButtons = [control, alt, shift, superKey];
+    const releaseButton = releaseKeys;
     const closeButton = document.createElement('button');
-    const bounds = screen.getBoundingClientRect();
-    title.textContent = 'VNC shortcuts'; sendButton.textContent = 'Super+Shift+B'; closeButton.textContent = 'Close';
-    palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 230, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
-    for (const button of [sendButton, closeButton]) button.type = 'button';
-    sendButton.addEventListener('click', () => { sendSuperShiftB(); dismissPrefixPalette(); });
-    closeButton.addEventListener('click', dismissPrefixPalette);
-    palette.append(title, sendButton, closeButton); screen.append(palette); prefixPalette = palette;
+    control.textContent = 'Ctrl'; alt.textContent = 'Alt'; shift.textContent = 'Shift'; superKey.textContent = 'Super';
+    releaseButton.textContent = 'Release'; closeButton.textContent = 'Close';
+    palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
+    palette.tabIndex = 0;
+    palette.setAttribute('aria-label', 'VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord');
+    for (const button of [...keyButtons, releaseButton, closeButton]) {
+      button.type = 'button';
+      button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
+    }
+    control.onclick = () => toggleModifier(control, 'Control', Keysyms.XK_Control_L, 'ControlLeft');
+    alt.onclick = () => toggleModifier(alt, 'Alt', Keysyms.XK_Alt_L, 'AltLeft');
+    shift.onclick = () => toggleModifier(shift, 'Shift', Keysyms.XK_Shift_L, 'ShiftLeft');
+    superKey.onclick = () => toggleModifier(superKey, 'Super', Keysyms.XK_Super_L, 'MetaLeft');
+    releaseButton.onclick = releaseModifiers;
+    closeButton.onclick = dismissPrefixPalette;
+    palette.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); dismissPrefixPalette(); return; }
+      if (!/^[a-z0-9]$/i.test(event.key) || !rfb) return;
+      event.preventDefault(); event.stopPropagation();
+      const character = event.key.toUpperCase();
+      const code = /^[A-Z]$/.test(character) ? `Key${character}` : `Digit${character}`;
+      rfb.sendKey(character.codePointAt(0), code, true);
+      rfb.sendKey(character.codePointAt(0), code, false);
+      api.log(`noVNC palette key sent: ${character}`);
+      releaseModifiers(); dismissPrefixPalette();
+    });
+    palette.append(title, ...keyButtons, releaseButton, closeButton); screen.append(palette); prefixPalette = palette;
+    palette.focus();
   };
   screen.addEventListener('pointermove', (event) => {
     const bounds = screen.getBoundingClientRect();
@@ -281,7 +214,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   };
   const applyZoom = () => {
     if (!rfb) return;
-    if (!enablePan()) return;
+    if (!enablePan(false)) return;
     drawNavigator();
     status.textContent = `Manual zoom: ${Math.round(zoom * 100)}%`;
   };
@@ -298,13 +231,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     status.textContent = 'Fit to panel.';
   });
   pan.addEventListener('click', () => setPanMode(!panMode));
-  screenOne.addEventListener('click', () => showScreen(1));
-  screenTwo.addEventListener('click', () => showScreen(2));
-  nextScreen.addEventListener('click', () => {
-    const layouts = screenLayout();
-    if (layouts.length === 0) { fitScreen(0); return; }
-    fitScreen((selectedScreen + 1) % layouts.length);
-  });
   overview.addEventListener('click', () => {
     navigator.style.display = navigator.style.display === 'none' ? 'block' : 'none';
     if (navigator.style.display !== 'none') drawNavigator();
@@ -313,11 +239,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panRight.addEventListener('click', () => panBy(Math.max(160, screen.clientWidth * 0.7), 0));
   panUp.addEventListener('click', () => panBy(0, -Math.max(120, screen.clientHeight * 0.7)));
   panDown.addEventListener('click', () => panBy(0, Math.max(120, screen.clientHeight * 0.7)));
-  control.addEventListener('click', () => toggleModifier(control, 'Control', Keysyms.XK_Control_L, 'ControlLeft'));
-  alt.addEventListener('click', () => toggleModifier(alt, 'Alt', Keysyms.XK_Alt_L, 'AltLeft'));
-  superKey.addEventListener('click', () => toggleModifier(superKey, 'Super', Keysyms.XK_Super_L, 'MetaLeft'));
-  releaseKeys.addEventListener('click', releaseModifiers);
-  shortcut.addEventListener('click', () => { sendShortcut(); });
   navigator.addEventListener('click', (event) => {
     if (zoom < 1.5) { zoom = 1.5; applyZoom(); }
     const remote = enablePan();
@@ -334,7 +255,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   // sent normally to the remote desktop for drag-and-drop.
   panCapture.addEventListener('pointerdown', (event) => {
     if (!panMode || event.button !== 0 || !rfb) return;
-    if (!enablePan()) return;
+    if (!enablePan(true)) return;
     event.preventDefault();
     dragPan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     panCapture.setPointerCapture?.(event.pointerId);
@@ -405,10 +326,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         rfb.scaleViewport = true;
         const details = reportFramebuffer('connected');
         status.textContent = `Connected: ${event.detail?.name || 'VNC server'} (${details.framebuffer})`;
-        window.setTimeout(() => {
-          const layouts = screenLayout();
-          api.log(`noVNC monitor layout: ${layouts.length ? layouts.map((item, index) => `${index + 1}=${item.width}x${item.height}+${item.x}+${item.y}`).join(', ') : 'not provided'}`);
-        }, 100);
       });
       window.setTimeout(() => {
         const details = reportFramebuffer('after connection');
