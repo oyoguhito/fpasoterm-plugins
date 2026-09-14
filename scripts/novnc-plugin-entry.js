@@ -60,11 +60,13 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let lastPointer = { x: 24, y: 24 };
   let prefixTimer = null;
   let prefixPalette = null;
+  let prefixShield = null;
   let removePrefixListener = () => {};
   let releaseHostKeyCapture = () => {};
   let pausedPointerHandlers = null;
   let paletteViewOnly = null;
   let pausedSendMouse = null;
+  let ctrlBPrefixUntil = 0;
   const heldModifiers = new Map();
   const setToggleAppearance = (button, enabled) => {
     button.setAttribute('aria-pressed', String(enabled));
@@ -185,6 +187,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const dismissPrefixPalette = () => {
     if (prefixTimer) { window.clearTimeout(prefixTimer); prefixTimer = null; }
     prefixPalette?.remove(); prefixPalette = null;
+    prefixShield?.remove(); prefixShield = null;
     // Restore normal pointer control only after the shortcut UI is gone.
     if (rfb?._canvas) rfb._canvas.style.pointerEvents = '';
     if (paletteViewOnly !== null && rfb) {
@@ -232,6 +235,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       pausedPointerHandlers = { canvas, handler, focusHandler };
       api.log('noVNC remote mouse sending paused for VNC Shortcuts');
     }
+    const shield = document.createElement('div');
     const palette = document.createElement('div');
     const title = document.createElement('strong');
     const keyButtons = [control, alt, shift, superKey];
@@ -240,7 +244,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     const closeButton = document.createElement('button');
     control.textContent = 'Ctrl'; alt.textContent = 'Alt'; shift.textContent = 'Shift'; superKey.textContent = 'Super';
     releaseButton.textContent = 'Release'; escapeButton.textContent = 'Esc'; closeButton.textContent = 'Close';
-    palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
+    shield.style.cssText = 'position:absolute;inset:0;z-index:2147483647;pointer-events:auto;background:transparent';
+    palette.style.cssText = `position:absolute;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
     // A noVNC canvas must never receive pointer events aimed at the shortcut
     // UI.  Otherwise selecting Ctrl/Alt/etc. also moves the remote cursor.
     palette.style.pointerEvents = 'auto';
@@ -254,7 +259,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     alt.onclick = () => toggleModifier(alt, 'Alt', Keysyms.XK_Alt_L, 'AltLeft');
     shift.onclick = () => toggleModifier(shift, 'Shift', Keysyms.XK_Shift_L, 'ShiftLeft');
     superKey.onclick = () => toggleModifier(superKey, 'Super', Keysyms.XK_Super_L, 'MetaLeft');
-    releaseButton.onclick = releaseModifiers;
+    releaseButton.onclick = () => { releaseModifiers(); dismissPrefixPalette(); };
     escapeButton.onclick = () => {
       sendChord([], '', 'Escape', Keysyms.XK_Escape);
       api.log('noVNC palette key sent: Escape');
@@ -265,6 +270,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       // Bubble phase preserves the button's own click handler, then prevents
       // the event from reaching the RFB host below the palette.
       palette.addEventListener(eventName, (event) => event.stopPropagation());
+      shield.addEventListener(eventName, (event) => event.stopPropagation());
     }
     palette.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') { event.preventDefault(); dismissPrefixPalette(); return; }
@@ -278,7 +284,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       api.log(`noVNC palette shortcut sent: ${[...heldModifiers.keys(), character].join('+')}`);
       releaseModifiers(); dismissPrefixPalette();
     });
-    palette.append(title, ...keyButtons, releaseButton, escapeButton, closeButton); screen.append(palette); prefixPalette = palette;
+    palette.append(title, ...keyButtons, releaseButton, escapeButton, closeButton);
+    shield.append(palette); screen.append(shield);
+    prefixShield = shield; prefixPalette = palette;
     palette.focus();
   };
   screen.addEventListener('pointermove', (event) => {
@@ -394,6 +402,25 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       releaseHostKeyCapture();
       const capturedControlKeys = new Set();
       const handleHostCtrlKey = (keyEvent) => {
+        if (keyEvent.code === 'Escape') {
+          sendChord([], '', 'Escape', Keysyms.XK_Escape);
+          api.log('noVNC physical key sent: Escape');
+          status.textContent = 'Key sent: Escape';
+          return true;
+        }
+        if (
+          ctrlBPrefixUntil > Date.now() &&
+          !keyEvent.ctrlKey && !keyEvent.altKey && !keyEvent.metaKey &&
+          keyEvent.code === 'KeyB'
+        ) {
+          ctrlBPrefixUntil = 0;
+          const key = keyEvent.shiftKey ? 'B' : 'b';
+          sendChord([], key, 'KeyB');
+          api.log(`noVNC Ctrl+b prefix key sent: ${key}`);
+          status.textContent = `Shortcut sent: Ctrl+b ${key}`;
+          return true;
+        }
+        if (ctrlBPrefixUntil <= Date.now()) ctrlBPrefixUntil = 0;
         if (keyEvent.code === 'ControlLeft' || keyEvent.code === 'ControlRight') {
           api.log(`noVNC host keyboard capture: ${keyEvent.code}`);
           return true;
@@ -411,6 +438,12 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         }
         if (/^Key[A-Z]$/.test(keyEvent.code)) {
           sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
+          if (!keyEvent.shiftKey && keyEvent.code === 'KeyB') {
+            // herd/tmux-style prefixes need their next b delivered through
+            // this same host path rather than relying on canvas focus.
+            ctrlBPrefixUntil = Date.now() + 2000;
+            api.log('noVNC Ctrl+b prefix armed for next b');
+          }
           return true;
         }
         return false;

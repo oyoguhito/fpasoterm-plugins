@@ -17599,6 +17599,7 @@
     let lastPointer = { x: 24, y: 24 };
     let prefixTimer = null;
     let prefixPalette = null;
+    let prefixShield = null;
     let removePrefixListener = () => {
     };
     let releaseHostKeyCapture = () => {
@@ -17606,6 +17607,7 @@
     let pausedPointerHandlers = null;
     let paletteViewOnly = null;
     let pausedSendMouse = null;
+    let ctrlBPrefixUntil = 0;
     const heldModifiers = /* @__PURE__ */ new Map();
     const setToggleAppearance = (button, enabled) => {
       button.setAttribute("aria-pressed", String(enabled));
@@ -17717,6 +17719,8 @@
       }
       prefixPalette?.remove();
       prefixPalette = null;
+      prefixShield?.remove();
+      prefixShield = null;
       if (rfb?._canvas) rfb._canvas.style.pointerEvents = "";
       if (paletteViewOnly !== null && rfb) {
         rfb._viewOnly = paletteViewOnly;
@@ -17754,6 +17758,7 @@
         pausedPointerHandlers = { canvas, handler, focusHandler };
         api.log("noVNC remote mouse sending paused for VNC Shortcuts");
       }
+      const shield = document.createElement("div");
       const palette = document.createElement("div");
       const title = document.createElement("strong");
       const keyButtons = [control, alt, shift, superKey];
@@ -17767,7 +17772,8 @@
       releaseButton.textContent = "Release";
       escapeButton.textContent = "Esc";
       closeButton.textContent = "Close";
-      palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
+      shield.style.cssText = "position:absolute;inset:0;z-index:2147483647;pointer-events:auto;background:transparent";
+      palette.style.cssText = `position:absolute;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
       palette.style.pointerEvents = "auto";
       palette.tabIndex = 0;
       palette.setAttribute("aria-label", "VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord");
@@ -17779,7 +17785,10 @@
       alt.onclick = () => toggleModifier(alt, "Alt", import_keysym.default.XK_Alt_L, "AltLeft");
       shift.onclick = () => toggleModifier(shift, "Shift", import_keysym.default.XK_Shift_L, "ShiftLeft");
       superKey.onclick = () => toggleModifier(superKey, "Super", import_keysym.default.XK_Super_L, "MetaLeft");
-      releaseButton.onclick = releaseModifiers;
+      releaseButton.onclick = () => {
+        releaseModifiers();
+        dismissPrefixPalette();
+      };
       escapeButton.onclick = () => {
         sendChord([], "", "Escape", import_keysym.default.XK_Escape);
         api.log("noVNC palette key sent: Escape");
@@ -17788,6 +17797,7 @@
       closeButton.onclick = dismissPrefixPalette;
       for (const eventName of ["pointerdown", "pointermove", "pointerup", "mousedown", "mousemove", "mouseup", "click"]) {
         palette.addEventListener(eventName, (event) => event.stopPropagation());
+        shield.addEventListener(eventName, (event) => event.stopPropagation());
       }
       palette.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
@@ -17808,7 +17818,9 @@
         dismissPrefixPalette();
       });
       palette.append(title, ...keyButtons, releaseButton, escapeButton, closeButton);
-      screen.append(palette);
+      shield.append(palette);
+      screen.append(shield);
+      prefixShield = shield;
       prefixPalette = palette;
       palette.focus();
     };
@@ -17934,6 +17946,21 @@
         releaseHostKeyCapture();
         const capturedControlKeys = /* @__PURE__ */ new Set();
         const handleHostCtrlKey = (keyEvent) => {
+          if (keyEvent.code === "Escape") {
+            sendChord([], "", "Escape", import_keysym.default.XK_Escape);
+            api.log("noVNC physical key sent: Escape");
+            status.textContent = "Key sent: Escape";
+            return true;
+          }
+          if (ctrlBPrefixUntil > Date.now() && !keyEvent.ctrlKey && !keyEvent.altKey && !keyEvent.metaKey && keyEvent.code === "KeyB") {
+            ctrlBPrefixUntil = 0;
+            const key = keyEvent.shiftKey ? "B" : "b";
+            sendChord([], key, "KeyB");
+            api.log(`noVNC Ctrl+b prefix key sent: ${key}`);
+            status.textContent = `Shortcut sent: Ctrl+b ${key}`;
+            return true;
+          }
+          if (ctrlBPrefixUntil <= Date.now()) ctrlBPrefixUntil = 0;
           if (keyEvent.code === "ControlLeft" || keyEvent.code === "ControlRight") {
             api.log(`noVNC host keyboard capture: ${keyEvent.code}`);
             return true;
@@ -17953,6 +17980,10 @@
           }
           if (/^Key[A-Z]$/.test(keyEvent.code)) {
             sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
+            if (!keyEvent.shiftKey && keyEvent.code === "KeyB") {
+              ctrlBPrefixUntil = Date.now() + 2e3;
+              api.log("noVNC Ctrl+b prefix armed for next b");
+            }
             return true;
           }
           return false;
