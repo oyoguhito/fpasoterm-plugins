@@ -17709,9 +17709,11 @@
       }
       prefixPalette?.remove();
       prefixPalette = null;
+      if (rfb?._canvas) rfb._canvas.style.pointerEvents = "";
     };
     const showPrefixPalette = () => {
       if (prefixPalette || !rfb) return;
+      if (rfb._canvas) rfb._canvas.style.pointerEvents = "none";
       const palette = document.createElement("div");
       const title = document.createElement("strong");
       const keyButtons = [control, alt, shift, superKey];
@@ -17937,13 +17939,13 @@
           sendCtrlChord(keyEvent.key);
         };
         const keyboardCanvas = rfb._canvas;
-        const keyboardTargets = [window, keyboardCanvas];
+        const keyboardTargets = [window, document, keyboardCanvas];
         for (const target of keyboardTargets) {
           target.addEventListener("keydown", prefixHandler, true);
           target.addEventListener("keyup", prefixHandler, true);
           target.addEventListener("keydown", ctrlHandler, true);
         }
-        api.log("noVNC keyboard capture armed (window + canvas)");
+        api.log("noVNC keyboard capture armed (window + document + canvas)");
         removePrefixListener = () => {
           for (const target of keyboardTargets) {
             target.removeEventListener("keydown", prefixHandler, true);

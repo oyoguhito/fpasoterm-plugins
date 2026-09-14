@@ -175,9 +175,16 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const dismissPrefixPalette = () => {
     if (prefixTimer) { window.clearTimeout(prefixTimer); prefixTimer = null; }
     prefixPalette?.remove(); prefixPalette = null;
+    // Restore normal pointer control only after the shortcut UI is gone.
+    if (rfb?._canvas) rfb._canvas.style.pointerEvents = '';
   };
   const showPrefixPalette = () => {
     if (prefixPalette || !rfb) return;
+    // The palette floats over the canvas, but browsers can still deliver a
+    // preceding move to noVNC while the user aims at a button. Disable canvas
+    // hit-testing for the entire palette lifetime to keep the remote cursor
+    // exactly where it was.
+    if (rfb._canvas) rfb._canvas.style.pointerEvents = 'none';
     const palette = document.createElement('div');
     const title = document.createElement('strong');
     const keyButtons = [control, alt, shift, superKey];
@@ -377,17 +384,18 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         capturedControlKeys.add(keyEvent.code);
         sendCtrlChord(keyEvent.key);
       };
-      // noVNC registers its keyboard handler directly on its canvas.  Capture
-      // both there and at window level: some desktop webviews stop events
-      // before they bubble to window, while browser builds may do the reverse.
+      // noVNC registers its keyboard handler directly on its canvas. Capture
+      // at every DOM level that can receive a desktop WebView key event.
+      // ChromeOS/WebKit variants differ on whether it reaches window, document,
+      // or only the focused canvas.
       const keyboardCanvas = rfb._canvas;
-      const keyboardTargets = [window, keyboardCanvas];
+      const keyboardTargets = [window, document, keyboardCanvas];
       for (const target of keyboardTargets) {
         target.addEventListener('keydown', prefixHandler, true);
         target.addEventListener('keyup', prefixHandler, true);
         target.addEventListener('keydown', ctrlHandler, true);
       }
-      api.log('noVNC keyboard capture armed (window + canvas)');
+      api.log('noVNC keyboard capture armed (window + document + canvas)');
       removePrefixListener = () => {
         for (const target of keyboardTargets) {
           target.removeEventListener('keydown', prefixHandler, true);
