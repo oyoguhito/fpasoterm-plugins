@@ -17926,7 +17926,8 @@
         connected = true;
         api.dismissPrompts();
         status.textContent = `Connected: ${event.detail?.name || "VNC server"}; waiting for remote framebuffer\u2026`;
-        overlay.focus();
+        rfb.focus();
+        api.log("noVNC canvas focused for keyboard input");
         removePrefixListener();
         releaseHostKeyCapture();
         const capturedControlKeys = /* @__PURE__ */ new Set();

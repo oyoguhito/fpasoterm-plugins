@@ -383,7 +383,11 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       connected = true;
       api.dismissPrompts();
       status.textContent = `Connected: ${event.detail?.name || 'VNC server'}; waiting for remote framebuffer…`;
-      overlay.focus();
+      // RFB's keyboard listener is attached to its canvas, not the element
+      // overlay container.  Focusing the container left Ctrl chords in the
+      // terminal/WebView focus path on ChromeOS.
+      rfb.focus();
+      api.log('noVNC canvas focused for keyboard input');
       removePrefixListener();
       releaseHostKeyCapture();
       const capturedControlKeys = new Set();
