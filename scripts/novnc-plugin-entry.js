@@ -187,6 +187,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     control.textContent = 'Ctrl'; alt.textContent = 'Alt'; shift.textContent = 'Shift'; superKey.textContent = 'Super';
     releaseButton.textContent = 'Release'; escapeButton.textContent = 'Esc'; closeButton.textContent = 'Close';
     palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
+    // A noVNC canvas must never receive pointer events aimed at the shortcut
+    // UI.  Otherwise selecting Ctrl/Alt/etc. also moves the remote cursor.
+    palette.style.pointerEvents = 'auto';
     palette.tabIndex = 0;
     palette.setAttribute('aria-label', 'VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord');
     for (const button of [...keyButtons, releaseButton, escapeButton, closeButton]) {
@@ -205,6 +208,11 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       dismissPrefixPalette();
     };
     closeButton.onclick = dismissPrefixPalette;
+    for (const eventName of ['pointerdown', 'pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'click']) {
+      // Bubble phase preserves the button's own click handler, then prevents
+      // the event from reaching the RFB host below the palette.
+      palette.addEventListener(eventName, (event) => event.stopPropagation());
+    }
     palette.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') { event.preventDefault(); dismissPrefixPalette(); return; }
       if (!/^[a-z0-9]$/i.test(event.key) || !rfb) return;
@@ -338,6 +346,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
           return;
         }
         if (keyEvent.code === 'ControlLeft' || keyEvent.code === 'ControlRight') {
+          api.log(`noVNC keyboard capture: ${keyEvent.code}`);
           keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
           return;
         }
@@ -368,13 +377,23 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         capturedControlKeys.add(keyEvent.code);
         sendCtrlChord(keyEvent.key);
       };
-      window.addEventListener('keydown', prefixHandler, true);
-      window.addEventListener('keyup', prefixHandler, true);
-      window.addEventListener('keydown', ctrlHandler, true);
+      // noVNC registers its keyboard handler directly on its canvas.  Capture
+      // both there and at window level: some desktop webviews stop events
+      // before they bubble to window, while browser builds may do the reverse.
+      const keyboardCanvas = rfb._canvas;
+      const keyboardTargets = [window, keyboardCanvas];
+      for (const target of keyboardTargets) {
+        target.addEventListener('keydown', prefixHandler, true);
+        target.addEventListener('keyup', prefixHandler, true);
+        target.addEventListener('keydown', ctrlHandler, true);
+      }
+      api.log('noVNC keyboard capture armed (window + canvas)');
       removePrefixListener = () => {
-        window.removeEventListener('keydown', prefixHandler, true);
-        window.removeEventListener('keyup', prefixHandler, true);
-        window.removeEventListener('keydown', ctrlHandler, true);
+        for (const target of keyboardTargets) {
+          target.removeEventListener('keydown', prefixHandler, true);
+          target.removeEventListener('keyup', prefixHandler, true);
+          target.removeEventListener('keydown', ctrlHandler, true);
+        }
       };
       requestAnimationFrame(() => {
         rfb.scaleViewport = true;
