@@ -162,13 +162,14 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     }
   };
   const sendCtrlChord = (character, includeShift = false) => {
-    const upper = character.toUpperCase();
-    const code = /^[A-Z]$/.test(upper) ? `Key${upper}` : `Digit${upper}`;
+    const lower = character.toLowerCase();
+    const key = includeShift ? lower.toUpperCase() : lower;
+    const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
     const modifiers = [{ keysym: Keysyms.XK_Control_L, code: 'ControlLeft' }];
     if (includeShift) modifiers.push({ keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' });
-    sendChord(modifiers, upper, code);
-    api.log(`noVNC physical shortcut sent: Ctrl${includeShift ? '+Shift' : ''}+${upper}`);
-    status.textContent = `Shortcut sent: Ctrl${includeShift ? '+Shift' : ''}+${upper}`;
+    sendChord(modifiers, key, code);
+    api.log(`noVNC physical shortcut sent: Ctrl${includeShift ? '+Shift' : ''}+${key}`);
+    status.textContent = `Shortcut sent: Ctrl${includeShift ? '+Shift' : ''}+${key}`;
   };
   const sendSuperShiftB = () => {
     if (!rfb) return;
@@ -269,8 +270,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       if (event.key === 'Escape') { event.preventDefault(); dismissPrefixPalette(); return; }
       if (!/^[a-z0-9]$/i.test(event.key) || !rfb) return;
       event.preventDefault(); event.stopPropagation();
-      const character = event.key.toUpperCase();
-      const code = /^[A-Z]$/.test(character) ? `Key${character}` : `Digit${character}`;
+      const lower = event.key.toLowerCase();
+      const character = heldModifiers.has('Shift') ? lower.toUpperCase() : lower;
+      const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
       const modifiers = [...heldModifiers.values()];
       sendChord(modifiers, character, code);
       api.log(`noVNC palette shortcut sent: ${[...heldModifiers.keys(), character].join('+')}`);
