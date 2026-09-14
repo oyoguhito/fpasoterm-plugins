@@ -17608,6 +17608,7 @@
     let paletteViewOnly = null;
     let pausedSendMouse = null;
     let ctrlBPrefixUntil = 0;
+    let suppressCtrlBPrefixKeyup = false;
     const heldModifiers = /* @__PURE__ */ new Map();
     const setToggleAppearance = (button, enabled) => {
       button.setAttribute("aria-pressed", String(enabled));
@@ -17700,6 +17701,10 @@
       const modifiers = [{ keysym: import_keysym.default.XK_Control_L, code: "ControlLeft" }];
       if (includeShift) modifiers.push({ keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" });
       sendChord(modifiers, key, code);
+      if (!includeShift && lower === "b") {
+        ctrlBPrefixUntil = Date.now() + 2e3;
+        api.log("noVNC Ctrl+b prefix armed for next b");
+      }
       api.log(`noVNC physical shortcut sent: Ctrl${includeShift ? "+Shift" : ""}+${key}`);
       status.textContent = `Shortcut sent: Ctrl${includeShift ? "+Shift" : ""}+${key}`;
     };
@@ -17764,6 +17769,7 @@
       const keyButtons = [control, alt, shift, superKey];
       const releaseButton = releaseKeys;
       const escapeButton = escapeKey;
+      const tabButton = document.createElement("button");
       const closeButton = document.createElement("button");
       control.textContent = "Ctrl";
       alt.textContent = "Alt";
@@ -17771,13 +17777,14 @@
       superKey.textContent = "Super";
       releaseButton.textContent = "Release";
       escapeButton.textContent = "Esc";
+      tabButton.textContent = "Tab";
       closeButton.textContent = "Close";
       shield.style.cssText = "position:absolute;inset:0;z-index:2147483647;pointer-events:auto;background:transparent";
       palette.style.cssText = `position:absolute;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
       palette.style.pointerEvents = "auto";
       palette.tabIndex = 0;
       palette.setAttribute("aria-label", "VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord");
-      for (const button of [...keyButtons, releaseButton, escapeButton, closeButton]) {
+      for (const button of [...keyButtons, releaseButton, escapeButton, tabButton, closeButton]) {
         button.type = "button";
         button.style.cssText = "padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc";
       }
@@ -17792,6 +17799,11 @@
       escapeButton.onclick = () => {
         sendChord([], "", "Escape", import_keysym.default.XK_Escape);
         api.log("noVNC palette key sent: Escape");
+        dismissPrefixPalette();
+      };
+      tabButton.onclick = () => {
+        sendChord([], "", "Tab", import_keysym.default.XK_Tab);
+        api.log("noVNC palette key sent: Tab");
         dismissPrefixPalette();
       };
       closeButton.onclick = dismissPrefixPalette;
@@ -17817,7 +17829,7 @@
         releaseModifiers();
         dismissPrefixPalette();
       });
-      palette.append(title, ...keyButtons, releaseButton, escapeButton, closeButton);
+      palette.append(title, ...keyButtons, releaseButton, escapeButton, tabButton, closeButton);
       shield.append(palette);
       screen.append(shield);
       prefixShield = shield;
@@ -17952,6 +17964,12 @@
             status.textContent = "Key sent: Escape";
             return true;
           }
+          if (keyEvent.code === "Tab") {
+            sendChord([], "", "Tab", import_keysym.default.XK_Tab);
+            api.log("noVNC physical key sent: Tab");
+            status.textContent = "Key sent: Tab";
+            return true;
+          }
           if (ctrlBPrefixUntil > Date.now() && !keyEvent.ctrlKey && !keyEvent.altKey && !keyEvent.metaKey && keyEvent.code === "KeyB") {
             ctrlBPrefixUntil = 0;
             const key = keyEvent.shiftKey ? "B" : "b";
@@ -17980,10 +17998,6 @@
           }
           if (/^Key[A-Z]$/.test(keyEvent.code)) {
             sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
-            if (!keyEvent.shiftKey && keyEvent.code === "KeyB") {
-              ctrlBPrefixUntil = Date.now() + 2e3;
-              api.log("noVNC Ctrl+b prefix armed for next b");
-            }
             return true;
           }
           return false;
@@ -17991,6 +18005,25 @@
         releaseHostKeyCapture = overlay.captureKeys?.(handleHostCtrlKey) || (() => {
         });
         api.log("noVNC host keyboard capture armed");
+        const originalKeyboardEvent = rfb._keyboard?.onkeyevent;
+        if (typeof originalKeyboardEvent === "function") {
+          rfb._keyboard.onkeyevent = (keysym, code, down) => {
+            if (ctrlBPrefixUntil > Date.now() && code === "KeyB") {
+              if (down) {
+                ctrlBPrefixUntil = 0;
+                suppressCtrlBPrefixKeyup = true;
+                sendChord([], "b", "KeyB");
+                api.log("noVNC Ctrl+b prefix key sent from canvas: b");
+              } else if (suppressCtrlBPrefixKeyup) {
+                suppressCtrlBPrefixKeyup = false;
+              } else {
+                originalKeyboardEvent(keysym, code, down);
+              }
+              return;
+            }
+            originalKeyboardEvent(keysym, code, down);
+          };
+        }
         const prefixHandler = (keyEvent) => {
           if (keyEvent.type === "keyup") {
             if (keyEvent.code === "ControlLeft" || keyEvent.code === "ControlRight" || capturedControlKeys.delete(keyEvent.code)) {
