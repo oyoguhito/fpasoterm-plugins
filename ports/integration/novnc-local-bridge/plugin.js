@@ -17660,20 +17660,34 @@
     const toggleModifier = (button, name, keysym, code) => {
       if (!rfb) return;
       const next = !heldModifiers.has(name);
-      rfb.sendKey(keysym, code, next);
       if (next) heldModifiers.set(name, { keysym, code, button });
       else heldModifiers.delete(name);
       setToggleAppearance(button, next);
-      status.textContent = next ? `Remote ${name} held. Click again to release.` : `Remote ${name} released.`;
+      api.log(`noVNC palette modifier selected: ${name}=${next}`);
+      status.textContent = next ? `${name} selected for the next shortcut.` : `${name} removed from the next shortcut.`;
     };
     const releaseModifiers = () => {
-      if (!rfb) return;
-      for (const [name, modifier] of heldModifiers) {
-        rfb.sendKey(modifier.keysym, modifier.code, false);
+      for (const [, modifier] of heldModifiers) {
         setToggleAppearance(modifier.button, false);
-        heldModifiers.delete(name);
       }
+      heldModifiers.clear();
       status.textContent = "Remote modifier keys released.";
+    };
+    const sendChord = (modifiers, character, code) => {
+      if (!rfb) return;
+      for (const modifier of modifiers) rfb.sendKey(modifier.keysym, modifier.code, true);
+      rfb.sendKey(character.codePointAt(0), code, true);
+      rfb.sendKey(character.codePointAt(0), code, false);
+      for (const modifier of [...modifiers].reverse()) rfb.sendKey(modifier.keysym, modifier.code, false);
+    };
+    const sendCtrlChord = (character, includeShift = false) => {
+      const upper = character.toUpperCase();
+      const code = /^[A-Z]$/.test(upper) ? `Key${upper}` : `Digit${upper}`;
+      const modifiers = [{ keysym: import_keysym.default.XK_Control_L, code: "ControlLeft" }];
+      if (includeShift) modifiers.push({ keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" });
+      sendChord(modifiers, upper, code);
+      api.log(`noVNC physical shortcut sent: Ctrl${includeShift ? "+Shift" : ""}+${upper}`);
+      status.textContent = `Shortcut sent: Ctrl${includeShift ? "+Shift" : ""}+${upper}`;
     };
     const sendSuperShiftB = () => {
       if (!rfb) return;
@@ -17687,17 +17701,6 @@
       rfb.sendKey(import_keysym.default.XK_Super_L, "MetaLeft", false);
       api.log("noVNC shortcut sent: Super+Shift+B (client Ctrl+Shift+B)");
       status.textContent = "Shortcut sent: Super+Shift+B";
-    };
-    const sendCtrlBB = () => {
-      if (!rfb) return;
-      rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", true);
-      rfb.sendKey("B".codePointAt(0), "KeyB", true);
-      rfb.sendKey("B".codePointAt(0), "KeyB", false);
-      rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", false);
-      rfb.sendKey("B".codePointAt(0), "KeyB", true);
-      rfb.sendKey("B".codePointAt(0), "KeyB", false);
-      api.log("noVNC shortcut sent: Ctrl+B, B");
-      status.textContent = "Shortcut sent: Ctrl+B, B";
     };
     const dismissPrefixPalette = () => {
       if (prefixTimer) {
@@ -17714,7 +17717,6 @@
       const keyButtons = [control, alt, shift, superKey];
       const releaseButton = releaseKeys;
       const escapeButton = escapeKey;
-      const tmuxButton = document.createElement("button");
       const closeButton = document.createElement("button");
       control.textContent = "Ctrl";
       alt.textContent = "Alt";
@@ -17722,12 +17724,11 @@
       superKey.textContent = "Super";
       releaseButton.textContent = "Release";
       escapeButton.textContent = "Esc";
-      tmuxButton.textContent = "Ctrl+B B";
       closeButton.textContent = "Close";
       palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
       palette.tabIndex = 0;
       palette.setAttribute("aria-label", "VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord");
-      for (const button of [...keyButtons, releaseButton, escapeButton, tmuxButton, closeButton]) {
+      for (const button of [...keyButtons, releaseButton, escapeButton, closeButton]) {
         button.type = "button";
         button.style.cssText = "padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc";
       }
@@ -17742,10 +17743,6 @@
         api.log("noVNC palette key sent: Escape");
         dismissPrefixPalette();
       };
-      tmuxButton.onclick = () => {
-        sendCtrlBB();
-        dismissPrefixPalette();
-      };
       closeButton.onclick = dismissPrefixPalette;
       palette.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
@@ -17758,13 +17755,13 @@
         event.stopPropagation();
         const character = event.key.toUpperCase();
         const code = /^[A-Z]$/.test(character) ? `Key${character}` : `Digit${character}`;
-        rfb.sendKey(character.codePointAt(0), code, true);
-        rfb.sendKey(character.codePointAt(0), code, false);
-        api.log(`noVNC palette key sent: ${character}`);
+        const modifiers = [...heldModifiers.values()];
+        sendChord(modifiers, character, code);
+        api.log(`noVNC palette shortcut sent: ${[...heldModifiers.keys(), character].join("+")}`);
         releaseModifiers();
         dismissPrefixPalette();
       });
-      palette.append(title, ...keyButtons, releaseButton, escapeButton, tmuxButton, closeButton);
+      palette.append(title, ...keyButtons, releaseButton, escapeButton, closeButton);
       screen.append(palette);
       prefixPalette = palette;
       palette.focus();
@@ -17887,7 +17884,20 @@
         status.textContent = `Connected: ${event.detail?.name || "VNC server"}; waiting for remote framebuffer\u2026`;
         overlay.focus();
         removePrefixListener();
+        const capturedControlKeys = /* @__PURE__ */ new Set();
         const prefixHandler = (keyEvent) => {
+          if (keyEvent.type === "keyup") {
+            if (keyEvent.code === "ControlLeft" || keyEvent.code === "ControlRight" || capturedControlKeys.delete(keyEvent.code)) {
+              keyEvent.preventDefault();
+              keyEvent.stopImmediatePropagation();
+            }
+            return;
+          }
+          if (keyEvent.code === "ControlLeft" || keyEvent.code === "ControlRight") {
+            keyEvent.preventDefault();
+            keyEvent.stopImmediatePropagation();
+            return;
+          }
           if (!keyEvent.ctrlKey || !keyEvent.shiftKey) return;
           if (keyEvent.code === "KeyB") {
             keyEvent.preventDefault();
@@ -17903,10 +17913,32 @@
             rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
             dismissPrefixPalette();
             showPrefixPalette();
+            return;
           }
+          if (/^Key[A-Z]$/.test(keyEvent.code)) {
+            keyEvent.preventDefault();
+            keyEvent.stopImmediatePropagation();
+            capturedControlKeys.add(keyEvent.code);
+            sendCtrlChord(keyEvent.key, true);
+            return;
+          }
+          return;
+        };
+        const ctrlHandler = (keyEvent) => {
+          if (keyEvent.type !== "keydown" || !keyEvent.ctrlKey || keyEvent.shiftKey || !/^Key[A-Z]$/.test(keyEvent.code)) return;
+          keyEvent.preventDefault();
+          keyEvent.stopImmediatePropagation();
+          capturedControlKeys.add(keyEvent.code);
+          sendCtrlChord(keyEvent.key);
         };
         window.addEventListener("keydown", prefixHandler, true);
-        removePrefixListener = () => window.removeEventListener("keydown", prefixHandler, true);
+        window.addEventListener("keyup", prefixHandler, true);
+        window.addEventListener("keydown", ctrlHandler, true);
+        removePrefixListener = () => {
+          window.removeEventListener("keydown", prefixHandler, true);
+          window.removeEventListener("keyup", prefixHandler, true);
+          window.removeEventListener("keydown", ctrlHandler, true);
+        };
         requestAnimationFrame(() => {
           rfb.scaleViewport = true;
           zoom = fittedScale();
