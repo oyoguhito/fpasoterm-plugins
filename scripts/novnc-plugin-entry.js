@@ -21,6 +21,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const shift = document.createElement('button');
   const superKey = document.createElement('button');
   const releaseKeys = document.createElement('button');
+  const escapeKey = document.createElement('button');
   const screen = document.createElement('div');
   const panCapture = document.createElement('div');
   const navigator = document.createElement('canvas');
@@ -170,13 +171,14 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     const title = document.createElement('strong');
     const keyButtons = [control, alt, shift, superKey];
     const releaseButton = releaseKeys;
+    const escapeButton = escapeKey;
     const closeButton = document.createElement('button');
     control.textContent = 'Ctrl'; alt.textContent = 'Alt'; shift.textContent = 'Shift'; superKey.textContent = 'Super';
-    releaseButton.textContent = 'Release'; closeButton.textContent = 'Close';
+    releaseButton.textContent = 'Release'; escapeButton.textContent = 'Esc'; closeButton.textContent = 'Close';
     palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
     palette.tabIndex = 0;
     palette.setAttribute('aria-label', 'VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord');
-    for (const button of [...keyButtons, releaseButton, closeButton]) {
+    for (const button of [...keyButtons, releaseButton, escapeButton, closeButton]) {
       button.type = 'button';
       button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
     }
@@ -185,6 +187,12 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     shift.onclick = () => toggleModifier(shift, 'Shift', Keysyms.XK_Shift_L, 'ShiftLeft');
     superKey.onclick = () => toggleModifier(superKey, 'Super', Keysyms.XK_Super_L, 'MetaLeft');
     releaseButton.onclick = releaseModifiers;
+    escapeButton.onclick = () => {
+      rfb.sendKey(Keysyms.XK_Escape, 'Escape', true);
+      rfb.sendKey(Keysyms.XK_Escape, 'Escape', false);
+      api.log('noVNC palette key sent: Escape');
+      dismissPrefixPalette();
+    };
     closeButton.onclick = dismissPrefixPalette;
     palette.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') { event.preventDefault(); dismissPrefixPalette(); return; }
@@ -197,7 +205,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       api.log(`noVNC palette key sent: ${character}`);
       releaseModifiers(); dismissPrefixPalette();
     });
-    palette.append(title, ...keyButtons, releaseButton, closeButton); screen.append(palette); prefixPalette = palette;
+    palette.append(title, ...keyButtons, releaseButton, escapeButton, closeButton); screen.append(palette); prefixPalette = palette;
     palette.focus();
   };
   screen.addEventListener('pointermove', (event) => {
@@ -218,13 +226,16 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     drawNavigator();
     status.textContent = `Manual zoom: ${Math.round(zoom * 100)}%`;
   };
-  zoomOut.addEventListener('click', () => { zoom = Math.max(0.5, zoom - 0.1); applyZoom(); });
+  zoomOut.addEventListener('click', () => { zoom = Math.max(0.1, zoom - 0.1); applyZoom(); });
   zoomIn.addEventListener('click', () => { zoom = Math.min(2.5, zoom + 0.1); applyZoom(); });
   fit.addEventListener('click', () => {
-    zoom = 1;
     if (rfb) {
       rfb.clipViewport = false;
       rfb.scaleViewport = true;
+      requestAnimationFrame(() => {
+        const fitScale = display()?.scale;
+        if (fitScale > 0) zoom = fitScale;
+      });
     }
     setPanMode(false);
     navigator.style.display = 'none';
@@ -324,6 +335,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       removePrefixListener = () => window.removeEventListener('keydown', prefixHandler, true);
       requestAnimationFrame(() => {
         rfb.scaleViewport = true;
+        const fitScale = display()?.scale;
+        if (fitScale > 0) zoom = fitScale;
         const details = reportFramebuffer('connected');
         status.textContent = `Connected: ${event.detail?.name || 'VNC server'} (${details.framebuffer})`;
       });
