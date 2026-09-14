@@ -17601,6 +17601,9 @@
     let prefixPalette = null;
     let removePrefixListener = () => {
     };
+    let releaseHostKeyCapture = () => {
+    };
+    let pausedPointerHandlers = null;
     const heldModifiers = /* @__PURE__ */ new Map();
     const setToggleAppearance = (button, enabled) => {
       button.setAttribute("aria-pressed", String(enabled));
@@ -17710,10 +17713,29 @@
       prefixPalette?.remove();
       prefixPalette = null;
       if (rfb?._canvas) rfb._canvas.style.pointerEvents = "";
+      if (pausedPointerHandlers) {
+        const { canvas, handler, focusHandler } = pausedPointerHandlers;
+        for (const eventName of ["mousedown", "mouseup", "mousemove", "click", "contextmenu"]) {
+          canvas.addEventListener(eventName, handler);
+        }
+        canvas.addEventListener("mousedown", focusHandler);
+        pausedPointerHandlers = null;
+      }
     };
     const showPrefixPalette = () => {
       if (prefixPalette || !rfb) return;
       if (rfb._canvas) rfb._canvas.style.pointerEvents = "none";
+      const canvas = rfb._canvas;
+      const handler = rfb._eventHandlers?.handleMouse;
+      const focusHandler = rfb._eventHandlers?.focusCanvas;
+      if (canvas && handler && focusHandler) {
+        for (const eventName of ["mousedown", "mouseup", "mousemove", "click", "contextmenu"]) {
+          canvas.removeEventListener(eventName, handler);
+        }
+        canvas.removeEventListener("mousedown", focusHandler);
+        pausedPointerHandlers = { canvas, handler, focusHandler };
+        api.log("noVNC pointer input paused for VNC Shortcuts");
+      }
       const palette = document.createElement("div");
       const title = document.createElement("strong");
       const keyButtons = [control, alt, shift, superKey];
@@ -17890,7 +17912,35 @@
         status.textContent = `Connected: ${event.detail?.name || "VNC server"}; waiting for remote framebuffer\u2026`;
         overlay.focus();
         removePrefixListener();
+        releaseHostKeyCapture();
         const capturedControlKeys = /* @__PURE__ */ new Set();
+        const handleHostCtrlKey = (keyEvent) => {
+          if (keyEvent.code === "ControlLeft" || keyEvent.code === "ControlRight") {
+            api.log(`noVNC host keyboard capture: ${keyEvent.code}`);
+            return true;
+          }
+          if (!keyEvent.ctrlKey) return false;
+          if (keyEvent.shiftKey && keyEvent.code === "KeyB") {
+            dismissPrefixPalette();
+            sendSuperShiftB();
+            return true;
+          }
+          if (keyEvent.shiftKey && keyEvent.code === "Space") {
+            rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", false);
+            rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
+            dismissPrefixPalette();
+            showPrefixPalette();
+            return true;
+          }
+          if (/^Key[A-Z]$/.test(keyEvent.code)) {
+            sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
+            return true;
+          }
+          return false;
+        };
+        releaseHostKeyCapture = overlay.captureKeys?.(handleHostCtrlKey) || (() => {
+        });
+        api.log("noVNC host keyboard capture armed");
         const prefixHandler = (keyEvent) => {
           if (keyEvent.type === "keyup") {
             if (keyEvent.code === "ControlLeft" || keyEvent.code === "ControlRight" || capturedControlKeys.delete(keyEvent.code)) {
@@ -17968,6 +18018,7 @@
       });
       rfb.addEventListener("disconnect", (event) => {
         removePrefixListener();
+        releaseHostKeyCapture();
         dismissPrefixPalette();
         for (const modifier of heldModifiers.values()) setToggleAppearance(modifier.button, false);
         heldModifiers.clear();
