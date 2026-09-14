@@ -17617,74 +17617,62 @@
       button.setAttribute("aria-pressed", String(enabled));
       button.style.background = enabled ? "#2d7d46" : "#263b4e";
     };
-    const remoteCanvas = () => screen.querySelector("div canvas");
-    const panViewport = () => remoteCanvas()?.parentElement || screen;
-    const canvasDisplaySize = () => {
-      const canvas = remoteCanvas();
-      if (!canvas) return { canvas: null, width: 0, height: 0 };
-      return {
-        canvas,
-        width: Number.parseFloat(canvas.style.width) || canvas.width,
-        height: Number.parseFloat(canvas.style.height) || canvas.height
-      };
-    };
+    const display = () => rfb?._display;
+    const viewport = () => display()?._viewportLoc;
     const drawNavigator = () => {
-      const { canvas, width, height } = canvasDisplaySize();
-      if (!canvas || !width || !height) return;
+      const remote = display();
+      const position = viewport();
+      if (!remote || !position || !remote.width || !remote.height) return;
       const context = navigator2.getContext("2d");
-      const scale = Math.min(navigator2.width / canvas.width, navigator2.height / canvas.height);
-      const drawWidth = Math.max(1, Math.round(canvas.width * scale));
-      const drawHeight = Math.max(1, Math.round(canvas.height * scale));
+      const scale = Math.min(navigator2.width / remote.width, navigator2.height / remote.height);
+      const drawWidth = Math.max(1, Math.round(remote.width * scale));
+      const drawHeight = Math.max(1, Math.round(remote.height * scale));
       const offsetX = Math.floor((navigator2.width - drawWidth) / 2);
       const offsetY = Math.floor((navigator2.height - drawHeight) / 2);
       context.fillStyle = "#111";
       context.fillRect(0, 0, navigator2.width, navigator2.height);
-      context.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight);
-      const viewport = panViewport();
+      context.drawImage(remote._backbuffer, offsetX, offsetY, drawWidth, drawHeight);
       context.strokeStyle = "#fff";
       context.lineWidth = 2;
       context.strokeRect(
-        offsetX + viewport.scrollLeft / width * drawWidth,
-        offsetY + viewport.scrollTop / height * drawHeight,
-        Math.min(drawWidth, viewport.clientWidth / width * drawWidth),
-        Math.min(drawHeight, viewport.clientHeight / height * drawHeight)
+        offsetX + position.x / remote.width * drawWidth,
+        offsetY + position.y / remote.height * drawHeight,
+        Math.min(drawWidth, position.w / remote.width * drawWidth),
+        Math.min(drawHeight, position.h / remote.height * drawHeight)
       );
     };
     const enablePan = () => {
       if (!rfb) return null;
       rfb.scaleViewport = false;
       rfb.clipViewport = true;
-      screen.style.zoom = "1";
-      const viewport = panViewport();
-      viewport.style.display = "block";
-      const canvas = remoteCanvas();
-      if (canvas) {
-        canvas.style.flex = "none";
-        canvas.style.margin = "0";
+      const remote = display();
+      if (remote && zoom > 0) {
+        remote.scale = zoom;
+        remote.viewportChangeSize(screen.clientWidth / zoom, screen.clientHeight / zoom);
       }
       drawNavigator();
-      return viewport;
+      return display();
     };
     const panBy = (left, top) => {
-      const viewport = enablePan();
-      if (!viewport) return;
-      viewport.scrollLeft += left;
-      viewport.scrollTop += top;
+      const remote = enablePan();
+      if (!remote) return;
+      remote.viewportChangePos(left / zoom, top / zoom);
       drawNavigator();
-      api.log(`noVNC pan: left=${viewport.scrollLeft}/${Math.max(0, viewport.scrollWidth - viewport.clientWidth)}, top=${viewport.scrollTop}/${Math.max(0, viewport.scrollHeight - viewport.clientHeight)}`);
+      const position = viewport();
+      api.log(`noVNC pan: x=${position.x}, y=${position.y}, viewport=${position.w}x${position.h}, framebuffer=${remote.width}x${remote.height}`);
       status.textContent = "Panning at 100%. Enable Pan to drag with the mouse.";
     };
     const showScreen = (number) => {
       if (zoom < 1.5) zoom = 1.5;
       applyZoom();
-      const viewport = enablePan();
-      if (!viewport) return;
-      const maximumLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-      const maximumTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-      viewport.scrollLeft = number === 1 ? 0 : maximumLeft;
-      viewport.scrollTop = number === 1 ? 0 : maximumTop;
+      const remote = enablePan();
+      const position = viewport();
+      if (!remote || !position) return;
+      const targetX = number === 1 ? 0 : remote.width - position.w;
+      const targetY = number === 1 ? 0 : remote.height - position.h;
+      remote.viewportChangePos(targetX - position.x, targetY - position.y);
       drawNavigator();
-      api.log(`noVNC screen ${number}: left=${viewport.scrollLeft}/${maximumLeft}, top=${viewport.scrollTop}/${maximumTop}`);
+      api.log(`noVNC screen ${number}: x=${viewport().x}, y=${viewport().y}`);
       status.textContent = number === 1 ? "Screen 1 (top-left) selected." : "Screen 2 (bottom-right) selected.";
     };
     const setPanMode = (enabled) => {
@@ -17712,22 +17700,16 @@
       status.textContent = "Remote modifier keys released.";
     };
     const reportFramebuffer = (stage) => {
-      const canvas = remoteCanvas();
-      const viewport = `${screen.clientWidth}x${screen.clientHeight}`;
-      const framebuffer = canvas ? `${canvas.width}x${canvas.height}` : "not created";
-      const message = `noVNC ${stage}: viewport=${viewport}, framebuffer=${framebuffer}`;
+      const remote = display();
+      const panel = `${screen.clientWidth}x${screen.clientHeight}`;
+      const framebuffer = remote ? `${remote.width}x${remote.height}` : "not created";
+      const message = `noVNC ${stage}: viewport=${panel}, framebuffer=${framebuffer}`;
       api.log(message);
-      return { canvas, viewport, framebuffer };
+      return { canvas: remote?._target, viewport: panel, framebuffer };
     };
     const applyZoom = () => {
       if (!rfb) return;
-      const viewport = enablePan();
-      const { canvas } = canvasDisplaySize();
-      if (canvas) {
-        canvas.style.width = `${Math.round(canvas.width * zoom)}px`;
-        canvas.style.height = `${Math.round(canvas.height * zoom)}px`;
-      }
-      if (!viewport) return;
+      if (!enablePan()) return;
       drawNavigator();
       status.textContent = `Manual zoom: ${Math.round(zoom * 100)}%`;
     };
@@ -17741,19 +17723,9 @@
     });
     fit.addEventListener("click", () => {
       zoom = 1;
-      screen.style.zoom = "1";
       if (rfb) {
         rfb.clipViewport = false;
         rfb.scaleViewport = true;
-        const viewport = panViewport();
-        viewport.style.display = "flex";
-        const canvas = remoteCanvas();
-        if (canvas) {
-          canvas.style.flex = "";
-          canvas.style.margin = "";
-          canvas.style.width = "";
-          canvas.style.height = "";
-        }
       }
       setPanMode(false);
       navigator2.style.display = "none";
@@ -17779,31 +17751,32 @@
         zoom = 1.5;
         applyZoom();
       }
-      const viewport = enablePan();
-      const { width, height } = canvasDisplaySize();
-      if (!viewport || !width || !height) return;
+      const remote = enablePan();
+      const position = viewport();
+      if (!remote || !position) return;
       const box = navigator2.getBoundingClientRect();
-      const remoteX = (event.clientX - box.left) / box.width * width;
-      const remoteY = (event.clientY - box.top) / box.height * height;
-      viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollWidth - viewport.clientWidth, remoteX - viewport.clientWidth / 2));
-      viewport.scrollTop = Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, remoteY - viewport.clientHeight / 2));
+      const remoteX = (event.clientX - box.left) / box.width * remote.width;
+      const remoteY = (event.clientY - box.top) / box.height * remote.height;
+      remote.viewportChangePos(remoteX - position.w / 2 - position.x, remoteY - position.h / 2 - position.y);
       drawNavigator();
       status.textContent = "Overview position selected.";
     });
     panCapture.addEventListener("pointerdown", (event) => {
       if (!panMode || event.button !== 0 || !rfb) return;
-      const viewport = enablePan();
-      if (!viewport) return;
+      if (!enablePan()) return;
       event.preventDefault();
-      dragPan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+      dragPan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
       panCapture.setPointerCapture?.(event.pointerId);
       panCapture.style.cursor = "grabbing";
     });
     panCapture.addEventListener("pointermove", (event) => {
       if (!dragPan || dragPan.pointerId !== event.pointerId) return;
-      const viewport = panViewport();
-      viewport.scrollLeft = dragPan.left - (event.clientX - dragPan.x);
-      viewport.scrollTop = dragPan.top - (event.clientY - dragPan.y);
+      const remote = display();
+      if (!remote) return;
+      remote.viewportChangePos((dragPan.x - event.clientX) / zoom, (dragPan.y - event.clientY) / zoom);
+      dragPan.x = event.clientX;
+      dragPan.y = event.clientY;
+      drawNavigator();
       event.preventDefault();
     });
     const stopDragPan = (event) => {

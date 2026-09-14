@@ -71,75 +71,64 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     button.setAttribute('aria-pressed', String(enabled));
     button.style.background = enabled ? '#2d7d46' : '#263b4e';
   };
-  const remoteCanvas = () => screen.querySelector('div canvas');
-  const panViewport = () => remoteCanvas()?.parentElement || screen;
-  const canvasDisplaySize = () => {
-    const canvas = remoteCanvas();
-    if (!canvas) return { canvas: null, width: 0, height: 0 };
-    return {
-      canvas,
-      width: Number.parseFloat(canvas.style.width) || canvas.width,
-      height: Number.parseFloat(canvas.style.height) || canvas.height,
-    };
-  };
+  const display = () => rfb?._display;
+  const viewport = () => display()?._viewportLoc;
   const drawNavigator = () => {
-    const { canvas, width, height } = canvasDisplaySize();
-    if (!canvas || !width || !height) return;
+    const remote = display();
+    const position = viewport();
+    if (!remote || !position || !remote.width || !remote.height) return;
     const context = navigator.getContext('2d');
-    const scale = Math.min(navigator.width / canvas.width, navigator.height / canvas.height);
-    const drawWidth = Math.max(1, Math.round(canvas.width * scale));
-    const drawHeight = Math.max(1, Math.round(canvas.height * scale));
+    const scale = Math.min(navigator.width / remote.width, navigator.height / remote.height);
+    const drawWidth = Math.max(1, Math.round(remote.width * scale));
+    const drawHeight = Math.max(1, Math.round(remote.height * scale));
     const offsetX = Math.floor((navigator.width - drawWidth) / 2);
     const offsetY = Math.floor((navigator.height - drawHeight) / 2);
     context.fillStyle = '#111'; context.fillRect(0, 0, navigator.width, navigator.height);
-    context.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight);
-    const viewport = panViewport();
+    // noVNC keeps the complete virtual desktop in its backbuffer even while
+    // the visible canvas is clipped to a smaller viewport.
+    context.drawImage(remote._backbuffer, offsetX, offsetY, drawWidth, drawHeight);
     context.strokeStyle = '#fff'; context.lineWidth = 2;
     context.strokeRect(
-      offsetX + (viewport.scrollLeft / width) * drawWidth,
-      offsetY + (viewport.scrollTop / height) * drawHeight,
-      Math.min(drawWidth, (viewport.clientWidth / width) * drawWidth),
-      Math.min(drawHeight, (viewport.clientHeight / height) * drawHeight),
+      offsetX + (position.x / remote.width) * drawWidth,
+      offsetY + (position.y / remote.height) * drawHeight,
+      Math.min(drawWidth, (position.w / remote.width) * drawWidth),
+      Math.min(drawHeight, (position.h / remote.height) * drawHeight),
     );
   };
   const enablePan = () => {
     if (!rfb) return null;
     rfb.scaleViewport = false;
-    // Without clipping, noVNC keeps the complete native framebuffer in its
-    // flex layout and there is no scrollable viewport to pan.  Clipping makes
-    // the panel a viewport over the virtual desktop, including a second
-    // monitor positioned to the right or below the first one.
     rfb.clipViewport = true;
-    screen.style.zoom = '1';
-    const viewport = panViewport();
-    // noVNC normally uses a flex child that may shrink the canvas to fit.
-    // Panning needs the native framebuffer to overflow its viewport instead.
-    viewport.style.display = 'block';
-    const canvas = remoteCanvas();
-    if (canvas) { canvas.style.flex = 'none'; canvas.style.margin = '0'; }
+    const remote = display();
+    // A clipped noVNC viewport is an internal framebuffer region, not a DOM
+    // scroll container. Resize that region for the desired visual zoom.
+    if (remote && zoom > 0) {
+      remote.scale = zoom;
+      remote.viewportChangeSize(screen.clientWidth / zoom, screen.clientHeight / zoom);
+    }
     drawNavigator();
-    return viewport;
+    return display();
   };
   const panBy = (left, top) => {
-    const viewport = enablePan();
-    if (!viewport) return;
-    viewport.scrollLeft += left;
-    viewport.scrollTop += top;
+    const remote = enablePan();
+    if (!remote) return;
+    remote.viewportChangePos(left / zoom, top / zoom);
     drawNavigator();
-    api.log(`noVNC pan: left=${viewport.scrollLeft}/${Math.max(0, viewport.scrollWidth - viewport.clientWidth)}, top=${viewport.scrollTop}/${Math.max(0, viewport.scrollHeight - viewport.clientHeight)}`);
+    const position = viewport();
+    api.log(`noVNC pan: x=${position.x}, y=${position.y}, viewport=${position.w}x${position.h}, framebuffer=${remote.width}x${remote.height}`);
     status.textContent = 'Panning at 100%. Enable Pan to drag with the mouse.';
   };
   const showScreen = (number) => {
     if (zoom < 1.5) zoom = 1.5;
     applyZoom();
-    const viewport = enablePan();
-    if (!viewport) return;
-    const maximumLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-    const maximumTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-    viewport.scrollLeft = number === 1 ? 0 : maximumLeft;
-    viewport.scrollTop = number === 1 ? 0 : maximumTop;
+    const remote = enablePan();
+    const position = viewport();
+    if (!remote || !position) return;
+    const targetX = number === 1 ? 0 : remote.width - position.w;
+    const targetY = number === 1 ? 0 : remote.height - position.h;
+    remote.viewportChangePos(targetX - position.x, targetY - position.y);
     drawNavigator();
-    api.log(`noVNC screen ${number}: left=${viewport.scrollLeft}/${maximumLeft}, top=${viewport.scrollTop}/${maximumTop}`);
+    api.log(`noVNC screen ${number}: x=${viewport().x}, y=${viewport().y}`);
     status.textContent = number === 1 ? 'Screen 1 (top-left) selected.' : 'Screen 2 (bottom-right) selected.';
   };
   const setPanMode = (enabled) => {
@@ -169,25 +158,16 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     status.textContent = 'Remote modifier keys released.';
   };
   const reportFramebuffer = (stage) => {
-    const canvas = remoteCanvas();
-    const viewport = `${screen.clientWidth}x${screen.clientHeight}`;
-    const framebuffer = canvas ? `${canvas.width}x${canvas.height}` : 'not created';
-    const message = `noVNC ${stage}: viewport=${viewport}, framebuffer=${framebuffer}`;
+    const remote = display();
+    const panel = `${screen.clientWidth}x${screen.clientHeight}`;
+    const framebuffer = remote ? `${remote.width}x${remote.height}` : 'not created';
+    const message = `noVNC ${stage}: viewport=${panel}, framebuffer=${framebuffer}`;
     api.log(message);
-    return { canvas, viewport, framebuffer };
+    return { canvas: remote?._target, viewport: panel, framebuffer };
   };
   const applyZoom = () => {
     if (!rfb) return;
-    const viewport = enablePan();
-    const { canvas } = canvasDisplaySize();
-    if (canvas) {
-      canvas.style.width = `${Math.round(canvas.width * zoom)}px`;
-      canvas.style.height = `${Math.round(canvas.height * zoom)}px`;
-    }
-    // Keep this only as a defensive fallback for an RFB object created before
-    // the canvas; the actual zoom is applied to the canvas so scrolling has a
-    // real extent instead of scaling the whole panel box.
-    if (!viewport) return;
+    if (!enablePan()) return;
     drawNavigator();
     status.textContent = `Manual zoom: ${Math.round(zoom * 100)}%`;
   };
@@ -195,14 +175,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   zoomIn.addEventListener('click', () => { zoom = Math.min(2.5, zoom + 0.1); applyZoom(); });
   fit.addEventListener('click', () => {
     zoom = 1;
-    screen.style.zoom = '1';
     if (rfb) {
       rfb.clipViewport = false;
       rfb.scaleViewport = true;
-      const viewport = panViewport();
-      viewport.style.display = 'flex';
-      const canvas = remoteCanvas();
-      if (canvas) { canvas.style.flex = ''; canvas.style.margin = ''; canvas.style.width = ''; canvas.style.height = ''; }
     }
     setPanMode(false);
     navigator.style.display = 'none';
@@ -225,34 +200,33 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   releaseKeys.addEventListener('click', releaseModifiers);
   navigator.addEventListener('click', (event) => {
     if (zoom < 1.5) { zoom = 1.5; applyZoom(); }
-    const viewport = enablePan();
-    const { width, height } = canvasDisplaySize();
-    if (!viewport || !width || !height) return;
+    const remote = enablePan();
+    const position = viewport();
+    if (!remote || !position) return;
     const box = navigator.getBoundingClientRect();
-    const remoteX = ((event.clientX - box.left) / box.width) * width;
-    const remoteY = ((event.clientY - box.top) / box.height) * height;
-    viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollWidth - viewport.clientWidth, remoteX - viewport.clientWidth / 2));
-    viewport.scrollTop = Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, remoteY - viewport.clientHeight / 2));
+    const remoteX = ((event.clientX - box.left) / box.width) * remote.width;
+    const remoteY = ((event.clientY - box.top) / box.height) * remote.height;
+    remote.viewportChangePos(remoteX - position.w / 2 - position.x, remoteY - position.h / 2 - position.y);
     drawNavigator();
     status.textContent = 'Overview position selected.';
   });
-  // Normal pointer drags are sent to the remote desktop.  Alt+drag is kept
-  // local so users can pan a multi-monitor framebuffer without losing remote
-  // drag-and-drop support.
+  // Pan mode captures the local pointer. With Pan disabled, pointer drags are
+  // sent normally to the remote desktop for drag-and-drop.
   panCapture.addEventListener('pointerdown', (event) => {
     if (!panMode || event.button !== 0 || !rfb) return;
-    const viewport = enablePan();
-    if (!viewport) return;
+    if (!enablePan()) return;
     event.preventDefault();
-    dragPan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+    dragPan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     panCapture.setPointerCapture?.(event.pointerId);
     panCapture.style.cursor = 'grabbing';
   });
   panCapture.addEventListener('pointermove', (event) => {
     if (!dragPan || dragPan.pointerId !== event.pointerId) return;
-    const viewport = panViewport();
-    viewport.scrollLeft = dragPan.left - (event.clientX - dragPan.x);
-    viewport.scrollTop = dragPan.top - (event.clientY - dragPan.y);
+    const remote = display();
+    if (!remote) return;
+    remote.viewportChangePos((dragPan.x - event.clientX) / zoom, (dragPan.y - event.clientY) / zoom);
+    dragPan.x = event.clientX; dragPan.y = event.clientY;
+    drawNavigator();
     event.preventDefault();
   });
   const stopDragPan = (event) => {
