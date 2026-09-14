@@ -99,6 +99,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let dragPan = null;
   let panMode = false;
   let selectedScreen = 0;
+  let lastPointer = { x: 24, y: 24 };
+  let prefixTimer = null;
+  let prefixPalette = null;
+  let removePrefixListener = () => {};
   const heldModifiers = new Map();
   const setToggleAppearance = (button, enabled) => {
     button.setAttribute('aria-pressed', String(enabled));
@@ -230,6 +234,43 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     api.log(`noVNC shortcut sent: ${tokens.join('+')}+${character}`);
     status.textContent = `Shortcut sent: ${tokens.join('+')}+${character}`;
   };
+  const sendSuperShiftB = () => {
+    if (!rfb) return;
+    // Ctrl may have reached noVNC before Shift armed the local prefix. Release
+    // it before sending the requested remote-only chord.
+    rfb.sendKey(Keysyms.XK_Control_L, 'ControlLeft', false);
+    rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
+    rfb.sendKey(Keysyms.XK_Super_L, 'MetaLeft', true);
+    rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', true);
+    rfb.sendKey('B'.codePointAt(0), 'KeyB', true);
+    rfb.sendKey('B'.codePointAt(0), 'KeyB', false);
+    rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
+    rfb.sendKey(Keysyms.XK_Super_L, 'MetaLeft', false);
+    api.log('noVNC shortcut sent: Super+Shift+B (client Ctrl+Shift+B)');
+    status.textContent = 'Shortcut sent: Super+Shift+B';
+  };
+  const dismissPrefixPalette = () => {
+    if (prefixTimer) { window.clearTimeout(prefixTimer); prefixTimer = null; }
+    prefixPalette?.remove(); prefixPalette = null;
+  };
+  const showPrefixPalette = () => {
+    if (prefixPalette || !rfb) return;
+    const palette = document.createElement('div');
+    const title = document.createElement('strong');
+    const sendButton = document.createElement('button');
+    const closeButton = document.createElement('button');
+    const bounds = screen.getBoundingClientRect();
+    title.textContent = 'VNC shortcuts'; sendButton.textContent = 'Super+Shift+B'; closeButton.textContent = 'Close';
+    palette.style.cssText = `position:absolute;z-index:30;left:${Math.max(8, Math.min(screen.clientWidth - 230, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
+    for (const button of [sendButton, closeButton]) button.type = 'button';
+    sendButton.addEventListener('click', () => { sendSuperShiftB(); dismissPrefixPalette(); });
+    closeButton.addEventListener('click', dismissPrefixPalette);
+    palette.append(title, sendButton, closeButton); screen.append(palette); prefixPalette = palette;
+  };
+  screen.addEventListener('pointermove', (event) => {
+    const bounds = screen.getBoundingClientRect();
+    lastPointer = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+  }, true);
   const reportFramebuffer = (stage) => {
     const remote = display();
     const panel = `${screen.clientWidth}x${screen.clientHeight}`;
@@ -343,6 +384,23 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       setPanMode(false);
       status.textContent = `Connected: ${event.detail?.name || 'VNC server'}; waiting for remote framebuffer…`;
       overlay.focus();
+      removePrefixListener();
+      const prefixHandler = (keyEvent) => {
+        if (!keyEvent.ctrlKey || !keyEvent.shiftKey) return;
+        if (keyEvent.code === 'KeyB') {
+          keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
+          dismissPrefixPalette(); sendSuperShiftB();
+          return;
+        }
+        if (keyEvent.code === 'Space') {
+          keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
+          rfb.sendKey(Keysyms.XK_Control_L, 'ControlLeft', false);
+          rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
+          dismissPrefixPalette(); showPrefixPalette();
+        }
+      };
+      window.addEventListener('keydown', prefixHandler, true);
+      removePrefixListener = () => window.removeEventListener('keydown', prefixHandler, true);
       requestAnimationFrame(() => {
         rfb.scaleViewport = true;
         const details = reportFramebuffer('connected');
@@ -360,6 +418,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       }, 750);
     });
     rfb.addEventListener('disconnect', (event) => {
+      removePrefixListener(); dismissPrefixPalette();
       for (const modifier of heldModifiers.values()) setToggleAppearance(modifier.button, false);
       heldModifiers.clear();
       status.textContent = event.detail?.clean ? 'Disconnected.' : 'Connection closed unexpectedly. Check Plugin Activity.';
