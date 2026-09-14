@@ -64,6 +64,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let releaseHostKeyCapture = () => {};
   let pausedPointerHandlers = null;
   let paletteViewOnly = null;
+  let pausedSendMouse = null;
   const heldModifiers = new Map();
   const setToggleAppearance = (button, enabled) => {
     button.setAttribute('aria-pressed', String(enabled));
@@ -189,6 +190,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       rfb._viewOnly = paletteViewOnly;
       paletteViewOnly = null;
     }
+    if (pausedSendMouse && rfb) {
+      rfb._sendMouse = pausedSendMouse;
+      pausedSendMouse = null;
+    }
     if (pausedPointerHandlers) {
       const { canvas, handler, focusHandler } = pausedPointerHandlers;
       for (const eventName of ['mousedown', 'mouseup', 'mousemove', 'click', 'contextmenu']) {
@@ -207,6 +212,11 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     if (rfb._canvas) rfb._canvas.style.pointerEvents = 'none';
     paletteViewOnly = rfb._viewOnly;
     rfb._viewOnly = true;
+    // noVNC's own source intentionally lets mouse events flow in view-only
+    // mode for viewport handling. Override the final network send method as
+    // well, so even a queued/native-captured mouse event cannot reach VNC.
+    pausedSendMouse = rfb._sendMouse;
+    rfb._sendMouse = () => {};
     const canvas = rfb._canvas;
     const handler = rfb._eventHandlers?.handleMouse;
     const focusHandler = rfb._eventHandlers?.focusCanvas;
@@ -219,7 +229,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       }
       canvas.removeEventListener('mousedown', focusHandler);
       pausedPointerHandlers = { canvas, handler, focusHandler };
-      api.log('noVNC pointer input paused for VNC Shortcuts');
+      api.log('noVNC remote mouse sending paused for VNC Shortcuts');
     }
     const palette = document.createElement('div');
     const title = document.createElement('strong');
