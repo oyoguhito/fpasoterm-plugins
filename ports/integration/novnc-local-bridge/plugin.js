@@ -17554,7 +17554,6 @@
     const alt = document.createElement("button");
     const shift = document.createElement("button");
     const superKey = document.createElement("button");
-    const releaseKeys = document.createElement("button");
     const escapeKey = document.createElement("button");
     const screen = document.createElement("div");
     const panCapture = document.createElement("div");
@@ -17776,7 +17775,6 @@
       const palette = document.createElement("div");
       const title = document.createElement("strong");
       const keyButtons = [control, alt, shift, superKey];
-      const releaseButton = releaseKeys;
       const escapeButton = escapeKey;
       const tabButton = document.createElement("button");
       const closeButton = document.createElement("button");
@@ -17784,7 +17782,6 @@
       alt.textContent = "Alt";
       shift.textContent = "Shift";
       superKey.textContent = "Super";
-      releaseButton.textContent = "Release";
       escapeButton.textContent = "Esc";
       tabButton.textContent = "Tab";
       closeButton.textContent = "Close";
@@ -17793,7 +17790,7 @@
       palette.style.pointerEvents = "auto";
       palette.tabIndex = 0;
       palette.setAttribute("aria-label", "VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord");
-      for (const button of [...keyButtons, releaseButton, escapeButton, tabButton, closeButton]) {
+      for (const button of [...keyButtons, escapeButton, tabButton, closeButton]) {
         button.type = "button";
         button.style.cssText = "padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc";
       }
@@ -17801,10 +17798,6 @@
       alt.onclick = () => toggleModifier(alt, "Alt", import_keysym.default.XK_Alt_L, "AltLeft");
       shift.onclick = () => toggleModifier(shift, "Shift", import_keysym.default.XK_Shift_L, "ShiftLeft");
       superKey.onclick = () => toggleModifier(superKey, "Super", import_keysym.default.XK_Super_L, "MetaLeft");
-      releaseButton.onclick = () => {
-        releaseModifiers();
-        dismissPrefixPalette();
-      };
       escapeButton.onclick = () => {
         sendChord([], "", "Escape", import_keysym.default.XK_Escape);
         api.log("noVNC palette key sent: Escape");
@@ -17838,7 +17831,7 @@
         releaseModifiers();
         dismissPrefixPalette();
       });
-      palette.append(title, ...keyButtons, releaseButton, escapeButton, tabButton, closeButton);
+      palette.append(title, ...keyButtons, escapeButton, tabButton, closeButton);
       shield.append(palette);
       screen.append(shield);
       prefixShield = shield;
