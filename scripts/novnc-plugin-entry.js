@@ -418,6 +418,25 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       releaseHostKeyCapture();
       const capturedControlKeys = new Set();
       const handleHostCtrlKey = (keyEvent) => {
+        // Element overlays live inside a WebView whose focus can remain on a
+        // host control after the remote application opens a menu. Send menu
+        // navigation explicitly instead of relying on noVNC's canvas handler
+        // to receive the bubbling browser event.
+        const navigationKeys = {
+          ArrowLeft: { key: 'Left', keysym: Keysyms.XK_Left },
+          ArrowUp: { key: 'Up', keysym: Keysyms.XK_Up },
+          ArrowRight: { key: 'Right', keysym: Keysyms.XK_Right },
+          ArrowDown: { key: 'Down', keysym: Keysyms.XK_Down },
+          Enter: { key: 'Enter', keysym: Keysyms.XK_Return },
+          NumpadEnter: { key: 'Enter', keysym: Keysyms.XK_Return },
+        };
+        const navigation = navigationKeys[keyEvent.code];
+        if (navigation) {
+          sendChord([], '', navigation.key, navigation.keysym);
+          api.log(`noVNC physical key sent: ${navigation.key}`);
+          status.textContent = `Key sent: ${navigation.key}`;
+          return true;
+        }
         if (keyEvent.code === 'Escape') {
           sendChord([], '', 'Escape', Keysyms.XK_Escape);
           api.log('noVNC physical key sent: Escape');
@@ -425,9 +444,11 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
           return true;
         }
         if (keyEvent.code === 'Tab') {
-          sendChord([], '', 'Tab', Keysyms.XK_Tab);
-          api.log('noVNC physical key sent: Tab');
-          status.textContent = 'Key sent: Tab';
+          const modifiers = keyEvent.shiftKey ? [{ keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' }] : [];
+          const label = keyEvent.shiftKey ? 'Shift+Tab' : 'Tab';
+          sendChord(modifiers, '', 'Tab', Keysyms.XK_Tab);
+          api.log(`noVNC physical key sent: ${label}`);
+          status.textContent = `Key sent: ${label}`;
           return true;
         }
         if (

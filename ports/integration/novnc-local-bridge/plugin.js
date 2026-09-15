@@ -17958,6 +17958,21 @@
         releaseHostKeyCapture();
         const capturedControlKeys = /* @__PURE__ */ new Set();
         const handleHostCtrlKey = (keyEvent) => {
+          const navigationKeys = {
+            ArrowLeft: { key: "Left", keysym: import_keysym.default.XK_Left },
+            ArrowUp: { key: "Up", keysym: import_keysym.default.XK_Up },
+            ArrowRight: { key: "Right", keysym: import_keysym.default.XK_Right },
+            ArrowDown: { key: "Down", keysym: import_keysym.default.XK_Down },
+            Enter: { key: "Enter", keysym: import_keysym.default.XK_Return },
+            NumpadEnter: { key: "Enter", keysym: import_keysym.default.XK_Return }
+          };
+          const navigation = navigationKeys[keyEvent.code];
+          if (navigation) {
+            sendChord([], "", navigation.key, navigation.keysym);
+            api.log(`noVNC physical key sent: ${navigation.key}`);
+            status.textContent = `Key sent: ${navigation.key}`;
+            return true;
+          }
           if (keyEvent.code === "Escape") {
             sendChord([], "", "Escape", import_keysym.default.XK_Escape);
             api.log("noVNC physical key sent: Escape");
@@ -17965,9 +17980,11 @@
             return true;
           }
           if (keyEvent.code === "Tab") {
-            sendChord([], "", "Tab", import_keysym.default.XK_Tab);
-            api.log("noVNC physical key sent: Tab");
-            status.textContent = "Key sent: Tab";
+            const modifiers = keyEvent.shiftKey ? [{ keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" }] : [];
+            const label = keyEvent.shiftKey ? "Shift+Tab" : "Tab";
+            sendChord(modifiers, "", "Tab", import_keysym.default.XK_Tab);
+            api.log(`noVNC physical key sent: ${label}`);
+            status.textContent = `Key sent: ${label}`;
             return true;
           }
           if (ctrlBPrefixUntil > Date.now() && !keyEvent.altKey && !keyEvent.metaKey && keyEvent.code === "KeyB") {
