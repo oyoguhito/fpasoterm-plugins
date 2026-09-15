@@ -17708,6 +17708,15 @@
       api.log(`noVNC physical shortcut sent: Ctrl${includeShift ? "+Shift" : ""}+${key}`);
       status.textContent = `Shortcut sent: Ctrl${includeShift ? "+Shift" : ""}+${key}`;
     };
+    const sendSuperChord = (character, includeShift = false) => {
+      const lower = character.toLowerCase();
+      const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
+      const modifiers = [{ keysym: import_keysym.default.XK_Super_L, code: "MetaLeft" }];
+      if (includeShift) modifiers.push({ keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" });
+      sendChord(modifiers, lower, code);
+      api.log(`noVNC physical shortcut sent: Super${includeShift ? "+Shift" : ""}+${lower}`);
+      status.textContent = `Shortcut sent: Super${includeShift ? "+Shift" : ""}+${lower}`;
+    };
     const sendSuperShiftB = () => {
       if (!rfb) return;
       sendChord([
@@ -17958,6 +17967,26 @@
         releaseHostKeyCapture();
         const capturedControlKeys = /* @__PURE__ */ new Set();
         const handleHostCtrlKey = (keyEvent) => {
+          const isSuperShift = keyEvent.metaKey && keyEvent.shiftKey;
+          if (isSuperShift && keyEvent.code === "Space") {
+            rfb.sendKey(import_keysym.default.XK_Super_L, "MetaLeft", false);
+            rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
+            dismissPrefixPalette();
+            showPrefixPalette();
+            api.log("noVNC VNC Shortcuts opened by Super+Shift+Space");
+            status.textContent = "VNC Shortcuts opened (Super+Shift+Space)";
+            return true;
+          }
+          if (keyEvent.metaKey && (keyEvent.code === "MetaLeft" || keyEvent.code === "MetaRight")) {
+            return true;
+          }
+          if (isSuperShift && (keyEvent.code === "ShiftLeft" || keyEvent.code === "ShiftRight")) {
+            return true;
+          }
+          if (keyEvent.metaKey && /^Key[A-Z]$/.test(keyEvent.code)) {
+            sendSuperChord(keyEvent.key, keyEvent.shiftKey);
+            return true;
+          }
           if (keyEvent.ctrlKey && keyEvent.shiftKey && keyEvent.code === "Space") {
             rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", false);
             rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
@@ -18058,6 +18087,17 @@
             api.log(`noVNC keyboard capture: ${keyEvent.code}`);
             keyEvent.preventDefault();
             keyEvent.stopImmediatePropagation();
+            return;
+          }
+          if (keyEvent.metaKey && keyEvent.shiftKey && keyEvent.code === "Space") {
+            keyEvent.preventDefault();
+            keyEvent.stopImmediatePropagation();
+            rfb.sendKey(import_keysym.default.XK_Super_L, "MetaLeft", false);
+            rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
+            dismissPrefixPalette();
+            showPrefixPalette();
+            api.log("noVNC VNC Shortcuts opened by canvas Super+Shift+Space");
+            status.textContent = "VNC Shortcuts opened (Super+Shift+Space)";
             return;
           }
           if (!keyEvent.ctrlKey || !keyEvent.shiftKey) return;
