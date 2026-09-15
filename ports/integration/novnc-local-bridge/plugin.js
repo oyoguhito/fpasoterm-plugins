@@ -17970,6 +17970,9 @@
             status.textContent = "VNC Shortcuts opened (Ctrl+Shift+Space)";
             return true;
           }
+          if (keyEvent.ctrlKey && keyEvent.shiftKey && ["ShiftLeft", "ShiftRight", "NumLock"].includes(keyEvent.code)) {
+            return true;
+          }
           const navigationKeys = {
             ArrowLeft: { key: "Left", keysym: import_keysym.default.XK_Left },
             ArrowUp: { key: "Up", keysym: import_keysym.default.XK_Up },
@@ -18096,13 +18099,13 @@
           sendCtrlChord(keyEvent.key);
         };
         const keyboardCanvas = rfb._canvas;
-        const keyboardTargets = [window, document, keyboardCanvas];
+        const keyboardTargets = [document, keyboardCanvas];
         for (const target of keyboardTargets) {
           target.addEventListener("keydown", prefixHandler, true);
           target.addEventListener("keyup", prefixHandler, true);
           target.addEventListener("keydown", ctrlHandler, true);
         }
-        api.log("noVNC keyboard capture armed (window + document + canvas)");
+        api.log("noVNC keyboard capture armed (document + canvas)");
         removePrefixListener = () => {
           for (const target of keyboardTargets) {
             target.removeEventListener("keydown", prefixHandler, true);
