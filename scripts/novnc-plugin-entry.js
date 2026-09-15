@@ -427,7 +427,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         }
         if (
           ctrlBPrefixUntil > Date.now() &&
-          !keyEvent.ctrlKey && !keyEvent.altKey && !keyEvent.metaKey &&
+          !keyEvent.altKey && !keyEvent.metaKey &&
           keyEvent.code === 'KeyB'
         ) {
           ctrlBPrefixUntil = 0;

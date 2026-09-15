@@ -17970,7 +17970,7 @@
             status.textContent = "Key sent: Tab";
             return true;
           }
-          if (ctrlBPrefixUntil > Date.now() && !keyEvent.ctrlKey && !keyEvent.altKey && !keyEvent.metaKey && keyEvent.code === "KeyB") {
+          if (ctrlBPrefixUntil > Date.now() && !keyEvent.altKey && !keyEvent.metaKey && keyEvent.code === "KeyB") {
             ctrlBPrefixUntil = 0;
             const key = keyEvent.shiftKey ? "B" : "b";
             sendChord([], key, "KeyB");
