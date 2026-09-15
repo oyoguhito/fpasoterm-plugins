@@ -166,7 +166,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   };
   const sendCtrlChord = (character, includeShift = false) => {
     const lower = character.toLowerCase();
-    const key = includeShift ? lower.toUpperCase() : lower;
+    // Shift is sent as a separate modifier.  Keep the keysym itself lowercase:
+    // VNC servers distinguish a shifted lowercase keysym from an uppercase
+    // keysym for shortcuts such as fpasoterm's Ctrl+Shift+m.
+    const key = lower;
     const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
     const modifiers = [{ keysym: Keysyms.XK_Control_L, code: 'ControlLeft' }];
     if (includeShift) modifiers.push({ keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' });
@@ -185,9 +188,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     sendChord([
       { keysym: Keysyms.XK_Super_L, code: 'MetaLeft' },
       { keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' },
-    ], 'B', 'KeyB');
-    api.log('noVNC shortcut sent: Super+Shift+B (client Ctrl+Shift+B)');
-    status.textContent = 'Shortcut sent: Super+Shift+B';
+    ], 'b', 'KeyB');
+    api.log('noVNC shortcut sent: Super+Shift+b (client Ctrl+Shift+b)');
+    status.textContent = 'Shortcut sent: Super+Shift+b';
   };
   const dismissPrefixPalette = () => {
     if (prefixTimer) { window.clearTimeout(prefixTimer); prefixTimer = null; }
@@ -288,7 +291,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       if (!/^[a-z0-9]$/i.test(event.key) || !rfb) return;
       event.preventDefault(); event.stopPropagation();
       const lower = event.key.toLowerCase();
-      const character = heldModifiers.has('Shift') ? lower.toUpperCase() : lower;
+      // Modifiers are delivered independently; the printable keysym remains
+      // lowercase so palette and physical-key paths have identical semantics.
+      const character = lower;
       const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
       const modifiers = [...heldModifiers.values()];
       sendChord(modifiers, character, code);

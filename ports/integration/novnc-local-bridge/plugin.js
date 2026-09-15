@@ -17696,7 +17696,7 @@
     };
     const sendCtrlChord = (character, includeShift = false) => {
       const lower = character.toLowerCase();
-      const key = includeShift ? lower.toUpperCase() : lower;
+      const key = lower;
       const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
       const modifiers = [{ keysym: import_keysym.default.XK_Control_L, code: "ControlLeft" }];
       if (includeShift) modifiers.push({ keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" });
@@ -17713,9 +17713,9 @@
       sendChord([
         { keysym: import_keysym.default.XK_Super_L, code: "MetaLeft" },
         { keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" }
-      ], "B", "KeyB");
-      api.log("noVNC shortcut sent: Super+Shift+B (client Ctrl+Shift+B)");
-      status.textContent = "Shortcut sent: Super+Shift+B";
+      ], "b", "KeyB");
+      api.log("noVNC shortcut sent: Super+Shift+b (client Ctrl+Shift+b)");
+      status.textContent = "Shortcut sent: Super+Shift+b";
     };
     const dismissPrefixPalette = () => {
       if (prefixTimer) {
@@ -17821,7 +17821,7 @@
         event.preventDefault();
         event.stopPropagation();
         const lower = event.key.toLowerCase();
-        const character = heldModifiers.has("Shift") ? lower.toUpperCase() : lower;
+        const character = lower;
         const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
         const modifiers = [...heldModifiers.values()];
         sendChord(modifiers, character, code);
