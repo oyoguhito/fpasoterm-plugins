@@ -5,6 +5,19 @@ noVNC 1.5.0 and can connect only to the exact target declared in its source:
 `tcp://127.0.0.1:59999`. This deliberately unused default avoids contacting an
 existing local VNC server during ordinary plugin development.
 
+## Prerequisite
+
+The configuration command rebuilds the bundled `plugin.js` with `esbuild`.
+After cloning the `fpasoterm-plugins` checkout, first install its development
+dependencies (including on Windows):
+
+```bash
+npm ci
+```
+
+Use Node.js 20 or later. Do not use `npm ci --omit=dev`, because that omits
+`esbuild` and causes `Cannot find module 'esbuild'`.
+
 For an actual VNC check, configure the exact target and regenerate `plugin.js`
 together:
 

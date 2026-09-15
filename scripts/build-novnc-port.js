@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 
-const esbuild = require('esbuild');
+let esbuild;
+try {
+  esbuild = require('esbuild');
+} catch (error) {
+  if (error?.code === 'MODULE_NOT_FOUND') {
+    throw new Error('noVNC port build requires development dependencies. Run "npm ci" in fpasoterm-plugins first (do not use --omit=dev).');
+  }
+  throw error;
+}
 const fs = require('node:fs');
 const path = require('node:path');
 
