@@ -14,9 +14,9 @@
     "security": "npm run scan:secrets && npm run audit:prod",
     "ports": "npm run build --silent && node dist/ports.js",
     "index": "npm run ports -- index --check",
-    "build:novnc-port": "node scripts/build-novnc-port.js",
-    "configure:novnc-port": "node scripts/configure-novnc-port.js",
-    "reset:novnc-port": "node scripts/reset-novnc-port.js"
+    "port:integration:novnc-local-bridge:build": "node scripts/build-novnc-port.js",
+    "port:integration:novnc-local-bridge:configure": "node scripts/configure-novnc-port.js",
+    "port:integration:novnc-local-bridge:reset": "node scripts/reset-novnc-port.js"
   },
   "engines": {
     "node": ">=20"

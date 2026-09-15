@@ -66,6 +66,19 @@ fpasoterm --plugin-install <category/name> --plugin-ports-dir . --enable
 fpasotermは異なる内容の既存plugin fileを`--force`なしで置き換えません。このoptionを
 使用する前にsourceを確認してください。
 
+### Port 固有の自動化script
+
+rootの`package.json`へ`build:<name>`のような汎用的なport固有script名を追加しないで
+ください。別categoryに同名portが存在し得るためです。必ず次の形式を使用します。
+
+```text
+port:<category>:<port-name>:<action>
+```
+
+例えばnoVNC verification portは
+`port:integration:novnc-local-bridge:build`を使用します。`check`や`security`のような
+repository全体のtaskだけは既存のprefixなし名称を維持します。
+
 dependency、workflow file、external dataを扱うsourceを追加する場合は、PR前に
 `npm run security`も実行してください。GitHub ActionsもすべてのPRで同じsecret scan、
 production dependency audit、CodeQL analysisを実行します。

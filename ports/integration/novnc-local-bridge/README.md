@@ -22,7 +22,7 @@ For an actual VNC check, configure the exact target and regenerate `plugin.js`
 together:
 
 ```bash
-npm run configure:novnc-port -- tcp://host:port
+npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
 ```
 
 For example, the normal VNC port is `5900`; use
@@ -48,7 +48,7 @@ unused default:
 
 ```bash
 cd ../fpasoterm-plugins
-npm run reset:novnc-port
+npm run port:integration:novnc-local-bridge:reset
 cd ../fpasoterm
 bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
   --plugin-install integration/novnc-local-bridge --enable --force
@@ -66,4 +66,4 @@ name against the operating system trust store and has no insecure override.
 
 The generated `plugin.js` is intentionally checked in: public ports install a
 single reviewed script. Regenerate it after changing the entry source with
-`npm run build:novnc-port`.
+`npm run port:integration:novnc-local-bridge:build`.
