@@ -17958,6 +17958,18 @@
         releaseHostKeyCapture();
         const capturedControlKeys = /* @__PURE__ */ new Set();
         const handleHostCtrlKey = (keyEvent) => {
+          if (keyEvent.ctrlKey && keyEvent.shiftKey) {
+            api.log(`noVNC host Ctrl+Shift input: code=${keyEvent.code} key=${JSON.stringify(keyEvent.key)}`);
+          }
+          if (keyEvent.ctrlKey && keyEvent.shiftKey && keyEvent.code === "Space") {
+            rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", false);
+            rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
+            dismissPrefixPalette();
+            showPrefixPalette();
+            api.log("noVNC VNC Shortcuts opened by Ctrl+Shift+Space");
+            status.textContent = "VNC Shortcuts opened (Ctrl+Shift+Space)";
+            return true;
+          }
           const navigationKeys = {
             ArrowLeft: { key: "Left", keysym: import_keysym.default.XK_Left },
             ArrowUp: { key: "Up", keysym: import_keysym.default.XK_Up },
@@ -18004,13 +18016,6 @@
           if (keyEvent.shiftKey && keyEvent.code === "KeyB") {
             dismissPrefixPalette();
             sendSuperShiftB();
-            return true;
-          }
-          if (keyEvent.shiftKey && keyEvent.code === "Space") {
-            rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", false);
-            rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
-            dismissPrefixPalette();
-            showPrefixPalette();
             return true;
           }
           if (/^Key[A-Z]$/.test(keyEvent.code)) {
@@ -18070,6 +18075,8 @@
             rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
             dismissPrefixPalette();
             showPrefixPalette();
+            api.log("noVNC VNC Shortcuts opened by canvas Ctrl+Shift+Space");
+            status.textContent = "VNC Shortcuts opened (Ctrl+Shift+Space)";
             return;
           }
           if (/^Key[A-Z]$/.test(keyEvent.code)) {

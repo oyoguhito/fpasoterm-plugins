@@ -418,6 +418,20 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       releaseHostKeyCapture();
       const capturedControlKeys = new Set();
       const handleHostCtrlKey = (keyEvent) => {
+        if (keyEvent.ctrlKey && keyEvent.shiftKey) {
+          api.log(`noVNC host Ctrl+Shift input: code=${keyEvent.code} key=${JSON.stringify(keyEvent.key)}`);
+        }
+        // Keep the VNC Shortcuts trigger before generic navigation handling.
+        // Windows WebView can retain the overlay focus after a remote menu is
+        // opened, so this must be handled by the same host capture path.
+        if (keyEvent.ctrlKey && keyEvent.shiftKey && keyEvent.code === 'Space') {
+          rfb.sendKey(Keysyms.XK_Control_L, 'ControlLeft', false);
+          rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
+          dismissPrefixPalette(); showPrefixPalette();
+          api.log('noVNC VNC Shortcuts opened by Ctrl+Shift+Space');
+          status.textContent = 'VNC Shortcuts opened (Ctrl+Shift+Space)';
+          return true;
+        }
         // Element overlays live inside a WebView whose focus can remain on a
         // host control after the remote application opens a menu. Send menu
         // navigation explicitly instead of relying on noVNC's canvas handler
@@ -471,12 +485,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         if (!keyEvent.ctrlKey) return false;
         if (keyEvent.shiftKey && keyEvent.code === 'KeyB') {
           dismissPrefixPalette(); sendSuperShiftB();
-          return true;
-        }
-        if (keyEvent.shiftKey && keyEvent.code === 'Space') {
-          rfb.sendKey(Keysyms.XK_Control_L, 'ControlLeft', false);
-          rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
-          dismissPrefixPalette(); showPrefixPalette();
           return true;
         }
         if (/^Key[A-Z]$/.test(keyEvent.code)) {
@@ -533,6 +541,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
           rfb.sendKey(Keysyms.XK_Control_L, 'ControlLeft', false);
           rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
           dismissPrefixPalette(); showPrefixPalette();
+          api.log('noVNC VNC Shortcuts opened by canvas Ctrl+Shift+Space');
+          status.textContent = 'VNC Shortcuts opened (Ctrl+Shift+Space)';
           return;
         }
         if (/^Key[A-Z]$/.test(keyEvent.code)) {
