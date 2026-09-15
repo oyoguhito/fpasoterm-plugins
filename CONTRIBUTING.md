@@ -66,6 +66,20 @@ fpasoterm --plugin-install <category/name> --plugin-ports-dir . --enable
 fpasoterm does not replace a different existing plugin file unless
 `--force` is supplied. Review the source before using that option.
 
+### Port automation scripts
+
+Do not add generic port-specific names such as `build:<name>` to the root
+`package.json`; another category can legitimately use the same port name. Use
+this required form instead:
+
+```text
+port:<category>:<port-name>:<action>
+```
+
+For example, the noVNC verification port uses
+`port:integration:novnc-local-bridge:build`. Repository-wide tasks retain
+their existing unprefixed names such as `check` and `security`.
+
 Run `npm run security` before a PR when the change adds dependencies, workflow
 files, or source that handles external data. GitHub Actions runs the same secret
 scan, production dependency audit, and CodeQL analysis for every PR.

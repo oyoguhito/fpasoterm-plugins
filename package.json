@@ -13,13 +13,18 @@
     "audit:prod": "npm audit --omit=dev",
     "security": "npm run scan:secrets && npm run audit:prod",
     "ports": "npm run build --silent && node dist/ports.js",
-    "index": "npm run ports -- index --check"
+    "index": "npm run ports -- index --check",
+    "port:integration:novnc-local-bridge:build": "node scripts/build-novnc-port.js",
+    "port:integration:novnc-local-bridge:configure": "node scripts/configure-novnc-port.js",
+    "port:integration:novnc-local-bridge:reset": "node scripts/reset-novnc-port.js"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
+    "@novnc/novnc": "^1.5.0",
     "@types/node": "^26.3.0",
+    "esbuild": "^0.25.12",
     "typescript": "^7.0.2"
   }
 }

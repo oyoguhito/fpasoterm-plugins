@@ -62,11 +62,39 @@ type FpasotermPluginApi = {
     close: () => void;
     focus: () => void;
   };
+  /** Opens a focus-trapped local DOM host without navigation or network access. */
+  openElementOverlay: (options?: {
+    title?: string;
+    width?: number;
+    height?: number;
+  }) => {
+    element: HTMLDivElement;
+    close: () => void;
+    focus: () => void;
+  };
+  /** Opens an HTTPS iframe panel for this plugin's declared, application-approved origins. */
+  openWebPanel: (options: {
+    title?: string;
+    url: string;
+    width?: number;
+    height?: number;
+  }) => {
+    close: () => void;
+    focus: () => void;
+  };
+  /** Opens an ephemeral loopback WebSocket only for an exact declared TCP target. */
+  openVncBridge: (options: { target: string }) => Promise<string>;
+  /** Prompts for a credential without persisting or logging its returned value. */
+  promptSecret: (options?: { title?: string; message?: string; approve?: string }) => Promise<string | null>;
+  /** Prompts for non-secret connection text without persisting or logging it. */
+  promptText: (options?: { title?: string; message?: string; approve?: string }) => Promise<string | null>;
+  /** Closes this plugin's outstanding credential prompts. */
+  dismissPrompts: () => void;
   onReady: (callback: () => void) => void;
   registerCommand: (
     id: string,
     title: string,
-    handler: () => void | Promise<void>,
+    handler: (args?: unknown) => void | Promise<void>,
   ) => void;
 };
 

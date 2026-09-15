@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.8
+// @fpasoterm-plugin version: 1.0.9
 // @fpasoterm-plugin description: Runs a user-selected Doom WebAssembly engine and user-owned IWAD in a local canvas.
 
 const api = window.fpasotermPluginApi;
@@ -46,7 +46,20 @@ function drawMessage(canvas, lines) {
   context.fillStyle = '#d8e7f5';
   context.font = '16px ui-monospace, monospace';
   context.textBaseline = 'top';
-  lines.forEach((line, index) => context.fillText(line, 24, 24 + index * 25));
+  const wrapped = [];
+  for (const source of lines) {
+    let line = '';
+    for (const character of String(source)) {
+      if (line && context.measureText(line + character).width > canvas.width - 48) {
+        wrapped.push(line);
+        line = character;
+      } else {
+        line += character;
+      }
+    }
+    wrapped.push(line);
+  }
+  wrapped.forEach((line, index) => context.fillText(line, 24, 24 + index * 25));
 }
 
 api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
@@ -54,6 +67,7 @@ api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
   const { canvas } = overlay;
   let engine;
   let selecting = false;
+  let retryRequiresKeyboard = false;
   let gameStarted = false;
   let selectionStage = 'selecting a doom.wasm engine';
   drawMessage(canvas, ['Click, Enter, or Space to select a GPL-compatible doom.wasm engine.', 'Use Close to exit. No file path, save data, or network access is used.']);
@@ -80,21 +94,29 @@ api.registerCommand('doom-wasm-local', 'Play local Doom (Wasm)', () => {
       await startGame(canvas, engine, wad.bytes, wad.name);
       gameStarted = true;
     } catch (error) {
+      retryRequiresKeyboard = true;
       drawMessage(canvas, [
         `Could not start local Doom while ${selectionStage}.`,
         String(error),
         '',
-        'Click, Enter, or Space to try again. The selected files remain in memory only.',
+        'Press Enter or Space to try again. Click only focuses this error message.',
       ]);
       api.log(`integration/doom-wasm-local failed while ${selectionStage}: ${String(error)}`);
     } finally {
       selecting = false;
     }
   };
-  canvas.addEventListener('click', () => { void selectAsset(); });
+  canvas.addEventListener('click', () => {
+    if (retryRequiresKeyboard) {
+      canvas.focus();
+      return;
+    }
+    void selectAsset();
+  });
   canvas.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
+      retryRequiresKeyboard = false;
       void selectAsset();
     }
   });

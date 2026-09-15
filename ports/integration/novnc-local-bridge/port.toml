@@ -1,0 +1,10 @@
+[port]
+id = "integration/novnc-local-bridge"
+name = "novnc-local-bridge"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Verification noVNC client for the strictly declared local TCP bridge."
+license = "MPL-2.0 AND MIT"
+minFpasotermVersion = "1.6.4"
+source = "plugin.js"
+installPath = "integration/novnc-local-bridge.js"
