@@ -17958,9 +17958,6 @@
         releaseHostKeyCapture();
         const capturedControlKeys = /* @__PURE__ */ new Set();
         const handleHostCtrlKey = (keyEvent) => {
-          if (keyEvent.ctrlKey && keyEvent.shiftKey) {
-            api.log(`noVNC host Ctrl+Shift input: code=${keyEvent.code} key=${JSON.stringify(keyEvent.key)}`);
-          }
           if (keyEvent.ctrlKey && keyEvent.shiftKey && keyEvent.code === "Space") {
             rfb.sendKey(import_keysym.default.XK_Control_L, "ControlLeft", false);
             rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);

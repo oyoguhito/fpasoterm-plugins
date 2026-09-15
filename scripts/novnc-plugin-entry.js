@@ -418,9 +418,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       releaseHostKeyCapture();
       const capturedControlKeys = new Set();
       const handleHostCtrlKey = (keyEvent) => {
-        if (keyEvent.ctrlKey && keyEvent.shiftKey) {
-          api.log(`noVNC host Ctrl+Shift input: code=${keyEvent.code} key=${JSON.stringify(keyEvent.key)}`);
-        }
         // Keep the VNC Shortcuts trigger before generic navigation handling.
         // Windows WebView can retain the overlay focus after a remote menu is
         // opened, so this must be handled by the same host capture path.
