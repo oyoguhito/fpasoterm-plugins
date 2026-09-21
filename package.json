@@ -1,6 +1,6 @@
 {
   "name": "fpasoterm-plugins",
-  "version": "0.0.1",
+  "version": "0.0.7",
   "private": true,
   "description": "Ports-style community plugins for fpasoterm.",
   "license": "MIT",
@@ -12,6 +12,7 @@
     "scan:secrets": "npm run build --silent && node dist/security/scan-secrets.js",
     "audit:prod": "npm audit --omit=dev",
     "security": "npm run scan:secrets && npm run audit:prod",
+    "port:integration:rdp-local-bridge:build": "node scripts/build-rdp-port.js",
     "ports": "npm run build --silent && node dist/ports.js",
     "index": "npm run ports -- index --check",
     "port:integration:novnc-local-bridge:build": "node scripts/build-novnc-port.js",
@@ -25,6 +26,7 @@
     "@novnc/novnc": "^1.5.0",
     "@types/node": "^26.3.0",
     "esbuild": "^0.25.12",
+    "ironrdp-wasm": "^1.1.0",
     "typescript": "^7.0.2"
   }
 }
