@@ -1,9 +1,9 @@
 import init, { DesktopSize, Extension, SessionBuilder, setup } from 'ironrdp-wasm';
-const wasmBase64 = '__FPASOTERM_RDP_WASM_BASE64__';
+const wasmBase64 = __FPASOTERM_RDP_WASM_BASE64__;
 
 // The port build replaces this inert default with FPASOTERM_RDP_TARGET and
 // writes the same exact target to the generated capability header.
-const target = '__FPASOTERM_RDP_TARGET__';
+const target = __FPASOTERM_RDP_TARGET__;
 const api = window.fpasotermPluginApi;
 
 function wasmBytes() {

@@ -104,6 +104,10 @@ assert.doesNotThrow(() => new Function(youtubeWebPanelSource));
 assert.deepEqual(portsApi.searchPorts('rdp').map((port) => port.id), [
   'integration/rdp-local-bridge',
 ]);
+const rdpEntrySource = fs.readFileSync(path.join(root, 'scripts', 'rdp-plugin-entry.js'), 'utf8');
+assert.match(rdpEntrySource, /const wasmBase64 = __FPASOTERM_RDP_WASM_BASE64__;/);
+assert.match(rdpEntrySource, /const target = __FPASOTERM_RDP_TARGET__;/);
+assert.doesNotMatch(rdpEntrySource, /'__FPASOTERM_RDP_(?:WASM_BASE64|TARGET)__'/);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),
   'utf8',

@@ -29,6 +29,11 @@ npm run ports -- index
 npm run check
 ```
 
+IronRDP's WebAssembly makes this generated port approximately 5.5 MiB.
+Accordingly, its reviewed `port.toml` declares `maxSourceBytes = 8388608`.
+fpasoterm keeps the normal 1 MiB limit for arbitrary local plugin files and
+for ports without that explicit declaration.
+
 Install the resulting reviewed local port with fpasoterm 1.6.8, then restart
 fpasoterm so it loads the enabled plugin:
 

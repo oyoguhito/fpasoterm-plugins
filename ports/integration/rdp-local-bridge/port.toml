@@ -8,3 +8,6 @@ license = "MIT"
 minFpasotermVersion = "1.6.8"
 source = "plugin.js"
 installPath = "integration/rdp-local-bridge.js"
+# IronRDP's bundled WebAssembly is larger than the default 1 MiB port limit.
+# fpasoterm accepts this reviewed, declared exception up to 8 MiB.
+maxSourceBytes = 8388608
