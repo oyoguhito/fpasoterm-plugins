@@ -9,6 +9,21 @@ Credentials are requested only for a connection and are not persisted or
 written to Diagnostics. The protocol implementation is not reimplemented by
 this port; it is supplied by the pinned third-party WebAssembly dependency.
 
+`openRdpBridge()` is an RDCleanPath-compatible local proxy, not the raw TCP
+relay used by the VNC port. On each connection, fpasoterm validates the
+one-time loopback URL and the exact plugin-declared destination, forwards the
+IronRDP X.224 negotiation to that destination, performs the RDP TLS hop, and
+returns the server's certificate chain to IronRDP before relaying the encrypted
+RDP stream. This is necessary for IronRDP WebAssembly to connect to a normal
+Windows RDP server.
+
+Many Windows RDP servers use a self-signed certificate. The local bridge does
+not silently add that certificate to the operating-system trust store or retain
+it. It preserves TLS handshake-signature verification, forwards the presented
+certificate to IronRDP as required by RDCleanPath, and confines the connection
+to the reviewed exact target. Connect only to a host whose identity and network
+you trust; certificate pinning/interactive certificate approval is future work.
+
 ## Build and verification
 
 Use a Windows host on a network you trust, with Remote Desktop enabled and a
