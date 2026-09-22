@@ -58,6 +58,15 @@ fpasoterm --plugin-install integration/rdp-local-bridge \
 fpasoterm --plugin-info integration/rdp-local-bridge.js
 ```
 
+During pre-release testing, use the fpasoterm build that contains the RDP
+bridge and reviewed-port source-limit support from the same change set. The RDP
+bundle is about 5.5 MiB. An older build with the same nominal version that has
+only the normal 1 MiB local-plugin limit reports `exceeds 1048576 bytes`; that
+message means the application build is too old, not that the reviewed port is
+corrupt. Do not use `--plugin-install-file` for this port: it intentionally
+uses the stricter 1 MiB limit for an arbitrary local file. Use the port ID and
+`--plugin-ports-dir` command shown above.
+
 Run **Open RDP local bridge (prototype)** from the plugin command UI. Verify
 that fpasoterm first shows a **Connect RDP** confirmation containing the same
 host and port, then requests username, optional domain, and password. A
