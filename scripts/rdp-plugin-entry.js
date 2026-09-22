@@ -1,4 +1,4 @@
-import init, { DesktopSize, Extension, SessionBuilder, setup } from 'ironrdp-wasm';
+import init, { DesktopSize, Extension, IronErrorKind, SessionBuilder, setup } from 'ironrdp-wasm';
 const wasmBase64 = __FPASOTERM_RDP_WASM_BASE64__;
 
 // The port build replaces this inert default with FPASOTERM_RDP_TARGET and
@@ -9,6 +9,38 @@ const api = window.fpasotermPluginApi;
 function wasmBytes() {
   const binary = atob(wasmBase64);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+// wasm-bindgen rejects with IronError objects rather than JavaScript Error.
+// Do not collapse their useful kind/details into "[object Object]".
+function formatRdpError(error) {
+  if (error instanceof Error) return error.message || error.name;
+  if (!error || typeof error !== 'object') return String(error);
+  const details = [];
+  try {
+    if (typeof error.kind === 'function') {
+      const kind = error.kind();
+      details.push(`IronRDP ${IronErrorKind[kind] || `error ${kind}`}`);
+    }
+  } catch (_) {}
+  try {
+    if (typeof error.rdcleanpathDetails === 'function') {
+      const cleanPath = error.rdcleanpathDetails();
+      if (cleanPath) {
+        for (const field of ['httpStatusCode', 'tlsAlertCode', 'wsaErrorCode']) {
+          if (cleanPath[field] !== undefined) details.push(`${field}=${cleanPath[field]}`);
+        }
+      }
+    }
+  } catch (_) {}
+  try {
+    if (typeof error.backtrace === 'function') {
+      const backtrace = error.backtrace().trim();
+      if (backtrace) details.push(backtrace.slice(0, 500));
+    }
+  } catch (_) {}
+  if (typeof error.message === 'string' && error.message) details.unshift(error.message);
+  return details.join('; ') || error.constructor?.name || 'unknown IronRDP error';
 }
 
 api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', async () => {
@@ -46,7 +78,8 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     status.textContent = `Connected: ${desktop.width} × ${desktop.height}`; canvas.focus();
     session.run().finally(() => { status.textContent = 'RDP session ended.'; session = null; });
   } catch (error) {
-    status.textContent = `Connection failed: ${error instanceof Error ? error.message : String(error)}`;
-    api.log(`RDP prototype connection failed for ${target}`);
+    const detail = formatRdpError(error);
+    status.textContent = `Connection failed: ${detail}`;
+    api.log(`RDP prototype connection failed for ${target}: ${detail}`);
   }
 });

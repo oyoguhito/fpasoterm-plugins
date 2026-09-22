@@ -1855,6 +1855,38 @@ ${val.stack}`;
     const binary = atob(wasmBase64);
     return Uint8Array.from(binary, (character) => character.charCodeAt(0));
   }
+  function formatRdpError(error) {
+    if (error instanceof Error) return error.message || error.name;
+    if (!error || typeof error !== "object") return String(error);
+    const details = [];
+    try {
+      if (typeof error.kind === "function") {
+        const kind = error.kind();
+        details.push(`IronRDP ${IronErrorKind[kind] || `error ${kind}`}`);
+      }
+    } catch (_) {
+    }
+    try {
+      if (typeof error.rdcleanpathDetails === "function") {
+        const cleanPath = error.rdcleanpathDetails();
+        if (cleanPath) {
+          for (const field of ["httpStatusCode", "tlsAlertCode", "wsaErrorCode"]) {
+            if (cleanPath[field] !== void 0) details.push(`${field}=${cleanPath[field]}`);
+          }
+        }
+      }
+    } catch (_) {
+    }
+    try {
+      if (typeof error.backtrace === "function") {
+        const backtrace = error.backtrace().trim();
+        if (backtrace) details.push(backtrace.slice(0, 500));
+      }
+    } catch (_) {
+    }
+    if (typeof error.message === "string" && error.message) details.unshift(error.message);
+    return details.join("; ") || error.constructor?.name || "unknown IronRDP error";
+  }
   api.registerCommand("rdp-local-bridge", "Open RDP local bridge (prototype)", async () => {
     if (typeof api.openRdpBridge !== "function") {
       throw new Error("RDP local bridge requires fpasoterm 1.6.8 or later.");
@@ -1908,8 +1940,9 @@ ${val.stack}`;
         session = null;
       });
     } catch (error) {
-      status.textContent = `Connection failed: ${error instanceof Error ? error.message : String(error)}`;
-      api.log(`RDP prototype connection failed for ${target}`);
+      const detail = formatRdpError(error);
+      status.textContent = `Connection failed: ${detail}`;
+      api.log(`RDP prototype connection failed for ${target}: ${detail}`);
     }
   });
 })();
