@@ -112,6 +112,11 @@ assert.match(rdpEntrySource, /IronErrorKind/);
 assert.match(rdpEntrySource, /function formatRdpError\(error\)/);
 assert.match(rdpEntrySource, /builder\.setCursorStyleCallbackContext\(canvas\)/);
 assert.match(rdpEntrySource, /builder\.setCursorStyleCallback\(/);
+assert.match(rdpEntrySource, /DeviceEvent, Extension, InputTransaction/);
+assert.match(rdpEntrySource, /function setupRdpInputHandlers\(canvas, session\)/);
+assert.match(rdpEntrySource, /DeviceEvent\.mouseButtonPressed/);
+assert.match(rdpEntrySource, /DeviceEvent\.keyPressed/);
+assert.match(rdpEntrySource, /setupRdpInputHandlers\(canvas, session\)/);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),
   'utf8',

@@ -1887,6 +1887,156 @@ ${val.stack}`;
     if (typeof error.message === "string" && error.message) details.unshift(error.message);
     return details.join("; ") || error.constructor?.name || "unknown IronRDP error";
   }
+  var SCANCODE_MAP = {
+    Escape: 1,
+    Digit1: 2,
+    Digit2: 3,
+    Digit3: 4,
+    Digit4: 5,
+    Digit5: 6,
+    Digit6: 7,
+    Digit7: 8,
+    Digit8: 9,
+    Digit9: 10,
+    Digit0: 11,
+    Minus: 12,
+    Equal: 13,
+    Backspace: 14,
+    Tab: 15,
+    KeyQ: 16,
+    KeyW: 17,
+    KeyE: 18,
+    KeyR: 19,
+    KeyT: 20,
+    KeyY: 21,
+    KeyU: 22,
+    KeyI: 23,
+    KeyO: 24,
+    KeyP: 25,
+    BracketLeft: 26,
+    BracketRight: 27,
+    Enter: 28,
+    ControlLeft: 29,
+    KeyA: 30,
+    KeyS: 31,
+    KeyD: 32,
+    KeyF: 33,
+    KeyG: 34,
+    KeyH: 35,
+    KeyJ: 36,
+    KeyK: 37,
+    KeyL: 38,
+    Semicolon: 39,
+    Quote: 40,
+    Backquote: 41,
+    ShiftLeft: 42,
+    Backslash: 43,
+    KeyZ: 44,
+    KeyX: 45,
+    KeyC: 46,
+    KeyV: 47,
+    KeyB: 48,
+    KeyN: 49,
+    KeyM: 50,
+    Comma: 51,
+    Period: 52,
+    Slash: 53,
+    ShiftRight: 54,
+    NumpadMultiply: 55,
+    AltLeft: 56,
+    Space: 57,
+    CapsLock: 58,
+    F1: 59,
+    F2: 60,
+    F3: 61,
+    F4: 62,
+    F5: 63,
+    F6: 64,
+    F7: 65,
+    F8: 66,
+    F9: 67,
+    F10: 68,
+    NumLock: 69,
+    ScrollLock: 70,
+    Numpad7: 71,
+    Numpad8: 72,
+    Numpad9: 73,
+    NumpadSubtract: 74,
+    Numpad4: 75,
+    Numpad5: 76,
+    Numpad6: 77,
+    NumpadAdd: 78,
+    Numpad1: 79,
+    Numpad2: 80,
+    Numpad3: 81,
+    Numpad0: 82,
+    NumpadDecimal: 83,
+    F11: 87,
+    F12: 88,
+    NumpadEnter: 57372,
+    ControlRight: 57373,
+    NumpadDivide: 57397,
+    PrintScreen: 57399,
+    AltRight: 57400,
+    Home: 57415,
+    ArrowUp: 57416,
+    PageUp: 57417,
+    ArrowLeft: 57419,
+    ArrowRight: 57421,
+    End: 57423,
+    ArrowDown: 57424,
+    PageDown: 57425,
+    Insert: 57426,
+    Delete: 57427,
+    MetaLeft: 57435,
+    MetaRight: 57436,
+    ContextMenu: 57437,
+    Pause: 14753093
+  };
+  function applyInput(session, event) {
+    const transaction = new InputTransaction();
+    transaction.addEvent(event);
+    session.applyInputs(transaction);
+  }
+  function setupRdpInputHandlers(canvas, session) {
+    canvas.addEventListener("keydown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const scancode = SCANCODE_MAP[event.code];
+      if (scancode !== void 0) applyInput(session, DeviceEvent.keyPressed(scancode));
+    });
+    canvas.addEventListener("keyup", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const scancode = SCANCODE_MAP[event.code];
+      if (scancode !== void 0) applyInput(session, DeviceEvent.keyReleased(scancode));
+    });
+    canvas.addEventListener("mousemove", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const x = Math.round((event.clientX - rect.left) * canvas.width / rect.width);
+      const y = Math.round((event.clientY - rect.top) * canvas.height / rect.height);
+      applyInput(session, DeviceEvent.mouseMove(x, y));
+    });
+    canvas.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      canvas.focus();
+      applyInput(session, DeviceEvent.mouseButtonPressed(event.button));
+    });
+    canvas.addEventListener("mouseup", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyInput(session, DeviceEvent.mouseButtonReleased(event.button));
+    });
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.deltaY) applyInput(session, DeviceEvent.wheelRotations(true, event.deltaY > 0 ? -1 : 1, RotationUnit.Line));
+      if (event.deltaX) applyInput(session, DeviceEvent.wheelRotations(false, event.deltaX > 0 ? -1 : 1, RotationUnit.Line));
+    }, { passive: false });
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+  }
   api.registerCommand("rdp-local-bridge", "Open RDP local bridge (prototype)", async () => {
     if (typeof api.openRdpBridge !== "function") {
       throw new Error("RDP local bridge requires fpasoterm 1.6.8 or later.");
@@ -1937,7 +2087,8 @@ ${val.stack}`;
       const desktop = session.desktopSize();
       canvas.width = desktop.width;
       canvas.height = desktop.height;
-      status.textContent = `Connected: ${desktop.width} \xD7 ${desktop.height}`;
+      setupRdpInputHandlers(canvas, session);
+      status.textContent = `Connected: ${desktop.width} \xD7 ${desktop.height} \u2014 click the desktop to control it.`;
       canvas.focus();
       session.run().finally(() => {
         status.textContent = "RDP session ended.";
