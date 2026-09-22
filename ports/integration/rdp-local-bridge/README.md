@@ -65,6 +65,30 @@ successful connection changes the overlay status to `Connected: WIDTH ×
 HEIGHT`; cancel, a refused connection, or invalid credentials leave a visible
 failure status and do not persist credentials.
 
+## Interaction and cross-platform verification
+
+After the status changes to `Connected`, click inside the remote desktop before
+typing. The port forwards keyboard, pointer, button, and wheel events only from
+the RDP canvas, so fpasoterm shortcuts outside the overlay remain available.
+
+ChromeOS (Crostini) verification passed on 2026-09-23. Before publishing for
+another OS, record the OS version, window system, browser engine, and RDP
+server in the pull-request test notes and perform the following checks:
+
+1. Connect to a reviewed, explicitly declared Windows RDP target and complete
+   the normal Windows sign-in flow.
+2. Click a desktop item or an application button, move the pointer, and scroll
+   a window in both directions.
+3. Type ASCII text, then test Backspace, Enter, arrow keys, and a modifier
+   shortcut appropriate for a disposable remote test account.
+4. Disconnect from the RDP overlay, close it, and confirm that fpasoterm input
+   and shortcuts still work normally.
+
+The current prototype maps common browser keys to PS/2 Set 1 scancodes for
+IronRDP. Non-US layouts, IME composition, touch input, clipboard redirection,
+and certificate pinning require separate compatibility work; do not mark them
+as supported without an OS-specific test.
+
 For a compatibility-only check against a specific development binary, run:
 
 ```bash
