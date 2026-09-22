@@ -1929,6 +1929,10 @@ ${val.stack}`;
       builder.desktopSize(new DesktopSize(1280, 720));
       builder.renderCanvas(canvas);
       builder.extension(new Extension("enable_credssp", true));
+      builder.setCursorStyleCallbackContext(canvas);
+      builder.setCursorStyleCallback((style) => {
+        canvas.style.cursor = style || "default";
+      });
       session = await builder.connect();
       const desktop = session.desktopSize();
       canvas.width = desktop.width;

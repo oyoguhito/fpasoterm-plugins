@@ -110,6 +110,8 @@ assert.match(rdpEntrySource, /const target = __FPASOTERM_RDP_TARGET__;/);
 assert.doesNotMatch(rdpEntrySource, /'__FPASOTERM_RDP_(?:WASM_BASE64|TARGET)__'/);
 assert.match(rdpEntrySource, /IronErrorKind/);
 assert.match(rdpEntrySource, /function formatRdpError\(error\)/);
+assert.match(rdpEntrySource, /builder\.setCursorStyleCallbackContext\(canvas\)/);
+assert.match(rdpEntrySource, /builder\.setCursorStyleCallback\(/);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),
   'utf8',

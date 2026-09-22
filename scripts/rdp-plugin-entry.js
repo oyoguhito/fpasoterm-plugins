@@ -73,6 +73,10 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     builder.proxyAddress(proxyAddress); builder.authToken('none');
     builder.desktopSize(new DesktopSize(1280, 720)); builder.renderCanvas(canvas);
     builder.extension(new Extension('enable_credssp', true));
+    // IronRDP requires a cursor callback before connect(). Keep the callback
+    // local to the canvas so a remote cursor never changes the terminal UI.
+    builder.setCursorStyleCallbackContext(canvas);
+    builder.setCursorStyleCallback((style) => { canvas.style.cursor = style || 'default'; });
     session = await builder.connect();
     const desktop = session.desktopSize(); canvas.width = desktop.width; canvas.height = desktop.height;
     status.textContent = `Connected: ${desktop.width} × ${desktop.height}`; canvas.focus();
