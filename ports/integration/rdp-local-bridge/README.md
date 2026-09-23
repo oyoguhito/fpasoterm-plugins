@@ -49,14 +49,24 @@ Accordingly, its reviewed `port.toml` declares `maxSourceBytes = 8388608`.
 fpasoterm keeps the normal 1 MiB limit for arbitrary local plugin files and
 for ports without that explicit declaration.
 
-Install the resulting reviewed local port with fpasoterm 1.6.8, then restart
-fpasoterm so it loads the enabled plugin:
+Install the resulting reviewed local port with the *native fpasoterm binary
+that will run the window*, then restart fpasoterm so it loads the enabled
+plugin. In this source checkout's release build, that is
+`src-tauri/release/target/fpasoterm` (use the corresponding absolute path when
+the plugin checkout is elsewhere):
 
 ```bash
-fpasoterm --plugin-install integration/rdp-local-bridge \
+../fpasoterm/src-tauri/release/target/fpasoterm \
+  --plugin-install integration/rdp-local-bridge \
   --plugin-ports-dir . --enable
-fpasoterm --plugin-info integration/rdp-local-bridge.js
+../fpasoterm/src-tauri/release/target/fpasoterm \
+  --plugin-info integration/rdp-local-bridge.js
 ```
+
+Do not substitute `bin/fpasoterm --dev` for this installation command: that is
+the Node.js development launcher and can build or run a different debug
+runtime. For a packaged installation, use its installed `fpasoterm`
+executable instead.
 
 During pre-release testing, use the fpasoterm build that contains the RDP
 bridge and reviewed-port source-limit support from the same change set. The RDP
