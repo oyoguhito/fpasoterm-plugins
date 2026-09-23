@@ -1,9 +1,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const root = path.resolve(__dirname, '..', '..');
 const ignoredDirectories = new Set(['.git', '.jj', 'node_modules']);
 const ignoredFiles = new Set(['package-lock.json']);
+const verifiedGeneratedWasmBundles = new Map([
+  ['ports/integration/rdp-local-bridge/plugin.js', {
+    marker: '// Third-party: ironrdp-wasm 1.1.0 (MIT)',
+    sha256: '0e22cf04df744a34db2c8a4aee703c0ab0cab1b05393b3fbf72aff3640e608e7',
+  }],
+]);
 const patterns: Array<[string, RegExp]> = [
   ['AWS access key', /AKIA[0-9A-Z]{16}/],
   ['GitHub token', /gh[pousr]_[A-Za-z0-9_]{36,}/],
@@ -31,17 +38,41 @@ function walk(directory) {
   return files;
 }
 
+// The reviewed RDP port is intentionally a single-file plugin. Its pinned
+// third-party IronRDP WebAssembly payload is base64-embedded by the port build
+// script; arbitrary binary bytes can accidentally resemble a credential. Scan
+// the generated wrapper and metadata as usual, but mask only a valid WebAssembly
+// payload in this one reviewed generated file.
+function maskVerifiedGeneratedWasm(relative, contents) {
+  const expected = verifiedGeneratedWasmBundles.get(relative);
+  if (!expected || !contents.includes(expected.marker)) {
+    return contents;
+  }
+  const match = /var wasmBase64 = "([A-Za-z0-9+/=]+)";/.exec(contents);
+  if (!match) {
+    return contents;
+  }
+  const wasm = Buffer.from(match[1], 'base64');
+  const wasmHash = crypto.createHash('sha256').update(wasm).digest('hex');
+  if (wasm.length < 4 || !wasm.subarray(0, 4).equals(Buffer.from([0, 97, 115, 109]))
+    || wasmHash !== expected.sha256) {
+    return contents;
+  }
+  return `${contents.slice(0, match.index)}var wasmBase64 = "<verified-generated-wasm>";${contents.slice(match.index + match[0].length)}`;
+}
+
 const findings = [];
 for (const file of walk(root)) {
   const relative = path.relative(root, file);
   if (ignoredFiles.has(relative)) {
     continue;
   }
-  const contents = fs.readFileSync(file);
-  if (contents.includes(0)) {
+  const bytes = fs.readFileSync(file);
+  if (bytes.includes(0)) {
     continue;
   }
-  for (const [lineNumber, line] of contents.toString('utf8').split(/\r?\n/).entries()) {
+  const contents = maskVerifiedGeneratedWasm(relative, bytes.toString('utf8'));
+  for (const [lineNumber, line] of contents.split(/\r?\n/).entries()) {
     for (const [name, pattern] of patterns) {
       if (pattern.test(line)) {
         findings.push(`${relative}:${lineNumber + 1}: possible ${name}`);

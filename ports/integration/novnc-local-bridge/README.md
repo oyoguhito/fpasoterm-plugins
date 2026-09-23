@@ -67,3 +67,9 @@ name against the operating system trust store and has no insecure override.
 The generated `plugin.js` is intentionally checked in: public ports install a
 single reviewed script. Regenerate it after changing the entry source with
 `npm run port:integration:novnc-local-bridge:build`.
+
+## Third-party notices
+
+This port bundles noVNC 1.5.0. Its copyright and MPL-2.0 licensing notice,
+plus information for obtaining its source, are recorded in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

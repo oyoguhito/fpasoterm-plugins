@@ -22,6 +22,11 @@ function readPort(portDirectory: string): Port {
     const match = line.match(/^([A-Za-z][A-Za-z0-9]*)\s*=\s*"([^"]*)"\s*$/);
     if (match) {
       values[match[1]] = match[2];
+      continue;
+    }
+    const integerMatch = line.match(/^([A-Za-z][A-Za-z0-9]*)\s*=\s*([0-9]+)\s*$/);
+    if (integerMatch) {
+      values[integerMatch[1]] = integerMatch[2];
     }
   }
   return { ...values, directory: portDirectory, manifestPath };
@@ -58,6 +63,12 @@ function validatePort(port: Port): void {
   }
   if (!port.source || !/\.([jt]s)$/.test(port.source) || path.basename(port.source) !== port.source) {
     throw new Error(`${port.manifestPath}: source must be a local .js or .ts file name`);
+  }
+  if (port.maxSourceBytes && (!/^[0-9]+$/.test(port.maxSourceBytes)
+    || !Number.isSafeInteger(Number(port.maxSourceBytes))
+    || Number(port.maxSourceBytes) < 1024 * 1024
+    || Number(port.maxSourceBytes) > 8 * 1024 * 1024)) {
+    throw new Error(`${port.manifestPath}: maxSourceBytes must be an integer from 1048576 to 8388608`);
   }
   if (!port.installPath || !/\.([jt]s)$/.test(port.installPath) || path.isAbsolute(port.installPath)) {
     throw new Error(`${port.manifestPath}: installPath must be a relative .js or .ts path`);

@@ -10,7 +10,7 @@ assert.doesNotMatch(portsSource, /command === 'install'/);
 assert.doesNotMatch(portsSource, /command === 'update'/);
 assert.doesNotMatch(portsSource, /command === 'uninstall'/);
 const ports = portsApi.discoverPorts();
-assert.equal(portsApi.readPortIndex().length, 15);
+assert.equal(portsApi.readPortIndex().length, 16);
 for (const identifier of [
   'appearance/amber',
   'terminal/hello',
@@ -27,6 +27,7 @@ for (const identifier of [
   'productivity/plugin-search',
   'productivity/clipboard-translate',
   'productivity/session-marker',
+  'integration/rdp-local-bridge',
 ]) {
   assert.ok(ports.some((port) => port.id === identifier));
 }
@@ -36,7 +37,7 @@ assert.deepEqual(
   portsApi.selectPorts('terminal/hello,terminal/welcome-banner').map((port) => port.id),
   ['terminal/hello', 'terminal/welcome-banner'],
 );
-assert.equal(portsApi.selectPorts('all', true).length, 15);
+assert.equal(portsApi.selectPorts('all', true).length, 16);
 assert.throws(() => portsApi.selectPorts('all,terminal/hello', true), /must be used alone/);
 assert.deepEqual(
   portsApi.searchPorts('WELCOME').map((port) => port.id),
@@ -52,7 +53,7 @@ assert.deepEqual(portsApi.searchPorts('doom').map((port) => port.id), [
   'integration/doom-wad-inspector',
   'integration/doom-wasm-local',
 ]);
-assert.equal(portsApi.searchPorts('oyoguhito').length, 15);
+assert.equal(portsApi.searchPorts('oyoguhito').length, 16);
 const doomWadInspectorSource = fs.readFileSync(
   path.join(root, 'ports', 'integration', 'doom-wad-inspector', 'plugin.ts'),
   'utf8',
@@ -100,6 +101,22 @@ assert.match(youtubeWebPanelSource, /openWebPanel/);
 assert.match(youtubeWebPanelSource, /https:\/\/www\.youtube-nocookie\.com\/embed\//);
 assert.doesNotMatch(youtubeWebPanelSource, /\bfetch\s*\(|openExternalUrl|localStorage|sessionStorage|\.path\b/);
 assert.doesNotThrow(() => new Function(youtubeWebPanelSource));
+assert.deepEqual(portsApi.searchPorts('rdp').map((port) => port.id), [
+  'integration/rdp-local-bridge',
+]);
+const rdpEntrySource = fs.readFileSync(path.join(root, 'scripts', 'rdp-plugin-entry.js'), 'utf8');
+assert.match(rdpEntrySource, /const wasmBase64 = __FPASOTERM_RDP_WASM_BASE64__;/);
+assert.match(rdpEntrySource, /const target = __FPASOTERM_RDP_TARGET__;/);
+assert.doesNotMatch(rdpEntrySource, /'__FPASOTERM_RDP_(?:WASM_BASE64|TARGET)__'/);
+assert.match(rdpEntrySource, /IronErrorKind/);
+assert.match(rdpEntrySource, /function formatRdpError\(error\)/);
+assert.match(rdpEntrySource, /builder\.setCursorStyleCallbackContext\(canvas\)/);
+assert.match(rdpEntrySource, /builder\.setCursorStyleCallback\(/);
+assert.match(rdpEntrySource, /DeviceEvent, Extension, InputTransaction/);
+assert.match(rdpEntrySource, /function setupRdpInputHandlers\(canvas, session\)/);
+assert.match(rdpEntrySource, /DeviceEvent\.mouseButtonPressed/);
+assert.match(rdpEntrySource, /DeviceEvent\.keyPressed/);
+assert.match(rdpEntrySource, /setupRdpInputHandlers\(canvas, session\)/);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),
   'utf8',
@@ -139,7 +156,7 @@ assert.throws(
   /must be a public name or GitHub account/,
 );
 ports.forEach(portsApi.validatePort);
-assert.equal(ports.length, 15);
+assert.equal(ports.length, 16);
 assert.doesNotThrow(() => portsApi.assertPortIndexCurrent());
 assert.equal(portsApi.normalizeIndexLineEndings('one\r\ntwo\rthree\n'), 'one\ntwo\nthree\n');
 assert.equal(typeof portsApi.syncCheckout, 'function');
