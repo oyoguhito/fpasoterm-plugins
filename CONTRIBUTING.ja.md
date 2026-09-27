@@ -66,6 +66,34 @@ fpasoterm --plugin-install <category/name> --plugin-ports-dir . --enable
 fpasotermは異なる内容の既存plugin fileを`--force`なしで置き換えません。このoptionを
 使用する前にsourceを確認してください。
 
+### 確認対象sourceからbuildしたbinaryを使用する
+
+`--plugin-ports-dir`を処理するのは、このrepositoryのNode.js toolではなくnative
+fpasoterm binaryです。そのため、既存の`src-tauri/target/debug/fpasoterm`がcheckout中の
+sourceより古い場合、正しいportの機能を拒否することがあります。portを確認する前に必ず
+binary versionを確認してください。
+
+```sh
+../fpasoterm/src-tauri/target/debug/fpasoterm --version
+```
+
+fpasoterm source checkoutで作業する場合は、current debug buildを強制し、同じcommandで
+installします。
+
+```sh
+cd ../fpasoterm
+bin/fpasoterm --dev --foreground \
+  --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/rdp-local-bridge --force
+```
+
+表示されるversionはcheckout中のfpasoterm version（例: `1.6.10`）である必要があり、
+以前のrelease versionではいけません。大きなreview済みWebAssembly portは`port.toml`で
+最大8 MiBの`maxSourceBytes`を宣言できます。この場合も上記のようにport IDからinstall
+してください。任意local file用の1 MiB上限は意図的に維持されるため、これらのportに
+`--plugin-install-file`を使用してはいけません。release確認ではpackaged `fpasoterm`
+executableを使用し、application sourceを変更した後はrebuildまたは再installしてください。
+
 ### Port 固有の自動化script
 
 rootの`package.json`へ`build:<name>`のような汎用的なport固有script名を追加しないで
