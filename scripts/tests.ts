@@ -104,6 +104,24 @@ assert.doesNotThrow(() => new Function(youtubeWebPanelSource));
 assert.deepEqual(portsApi.searchPorts('rdp').map((port) => port.id), [
   'integration/rdp-local-bridge',
 ]);
+const pluginApiDeclaration = fs.readFileSync(path.join(root, 'api', 'fpasoterm-plugin.d.ts'), 'utf8');
+assert.match(pluginApiDeclaration, /allowed-tcp-targets[\s\S]*openVncBridge:/);
+assert.match(pluginApiDeclaration, /system trust roots[\s\S]*openVncBridge:/);
+assert.match(pluginApiDeclaration, /RDCleanPath[\s\S]*openRdpBridge:/);
+assert.match(pluginApiDeclaration, /tcp:\/\/host:port[\s\S]*openRdpBridge:/);
+const vncReadme = fs.readFileSync(
+  path.join(root, 'ports', 'integration', 'novnc-local-bridge', 'README.md'),
+  'utf8',
+);
+assert.match(vncReadme, /exact configured target/);
+assert.match(vncReadme, /system trust store/);
+assert.match(vncReadme, /no insecure override/);
+const rdpReadme = fs.readFileSync(
+  path.join(root, 'ports', 'integration', 'rdp-local-bridge', 'README.md'),
+  'utf8',
+);
+assert.match(rdpReadme, /TLS\s+plaintext RDP stream/);
+assert.match(rdpReadme, /does not wrap the loopback WebSocket in a second TLS layer/);
 const rdpEntrySource = fs.readFileSync(path.join(root, 'scripts', 'rdp-plugin-entry.js'), 'utf8');
 assert.match(rdpEntrySource, /const wasmBase64 = __FPASOTERM_RDP_WASM_BASE64__;/);
 assert.match(rdpEntrySource, /const target = __FPASOTERM_RDP_TARGET__;/);
