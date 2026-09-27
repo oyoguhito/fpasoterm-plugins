@@ -13,9 +13,11 @@ this port; it is supplied by the pinned third-party WebAssembly dependency.
 relay used by the VNC port. On each connection, fpasoterm validates the
 one-time loopback URL and the exact plugin-declared destination, forwards the
 IronRDP X.224 negotiation to that destination, performs the RDP TLS hop, and
-returns the server's certificate chain to IronRDP before relaying the encrypted
-RDP stream. This is necessary for IronRDP WebAssembly to connect to a normal
-Windows RDP server.
+returns the server's certificate chain to IronRDP before relaying the TLS
+plaintext RDP stream over the loopback transport. This is necessary for IronRDP
+WebAssembly to connect to a normal Windows RDP server. `tcp://` describes the
+declared destination only: the native bridge still establishes the RDP TLS hop;
+it does not wrap the loopback WebSocket in a second TLS layer.
 
 Many Windows RDP servers use a self-signed certificate. The local bridge does
 not silently add that certificate to the operating-system trust store or retain
