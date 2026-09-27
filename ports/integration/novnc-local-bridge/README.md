@@ -43,6 +43,18 @@ The plugin requests username first (leave blank for password-only servers),
 then password, before starting noVNC. The panel also provides **Zoom −**,
 **Zoom +**, and **Fit** controls; Fit is the default automatic sizing mode.
 
+## Clipboard
+
+After the connection is established, select **Enable clipboard sync** to share
+plain text with that one VNC desktop. Remote-to-local changes are written to
+fpasoterm's shared WebView/OS clipboard; local-to-remote changes are checked
+once per second while the control remains enabled. The control defaults to off
+for every new connection, stops on disconnect, never logs or persists clipboard
+content, and ignores empty text, HTML/files/binary formats, and text over 1 MiB.
+
+Verify both directions with disposable text: copy in the remote desktop and
+paste in a local editor, then copy in the local editor and paste remotely.
+
 After the check, restore both the checkout and installed plugin to the safe
 unused default:
 

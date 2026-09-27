@@ -31,7 +31,7 @@ function build() {
     target: 'es2020',
     banner: {
       js: [
-        '// @fpasoterm-plugin version: 1.0.0',
+        '// @fpasoterm-plugin version: 1.0.1',
         '// @fpasoterm-plugin description: Verification noVNC client for the strictly declared local TCP bridge.',
         `// @fpasoterm-plugin allowed-tcp-targets: ${target}`,
       ].join('\n'),

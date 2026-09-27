@@ -1,4 +1,4 @@
-import init, { DesktopSize, DeviceEvent, Extension, InputTransaction, IronErrorKind, RotationUnit, SessionBuilder, setup } from 'ironrdp-wasm';
+import init, { ClipboardData, DesktopSize, DeviceEvent, Extension, InputTransaction, IronErrorKind, RotationUnit, SessionBuilder, setup } from 'ironrdp-wasm';
 const wasmBase64 = __FPASOTERM_RDP_WASM_BASE64__;
 
 // The port build replaces this inert default with FPASOTERM_RDP_TARGET and
@@ -111,6 +111,26 @@ function setupRdpInputHandlers(canvas, session) {
   canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 }
 
+// RDP clipboard redirection carries multiple formats.  This reviewed port
+// intentionally accepts only bounded plain text, which keeps clipboard data
+// out of diagnostics and avoids transferring files, HTML, or binary payloads.
+const MAX_CLIPBOARD_BYTES = 1024 * 1024;
+function boundedClipboardText(value) {
+  const text = String(value || '');
+  return new TextEncoder().encode(text).byteLength <= MAX_CLIPBOARD_BYTES ? text : null;
+}
+
+function remotePlainText(content) {
+  for (const item of content?.items?.() || []) {
+    const mimeType = item.mimeType?.().toLowerCase();
+    if (mimeType === 'text/plain' || mimeType === 'text/plain;charset=utf-8' || mimeType === 'text') {
+      const value = item.value?.();
+      if (typeof value === 'string') return boundedClipboardText(value);
+    }
+  }
+  return '';
+}
+
 api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', async () => {
   if (typeof api.openRdpBridge !== 'function') {
     throw new Error('RDP local bridge requires fpasoterm 1.6.8 or later.');
@@ -129,8 +149,51 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   const status = document.createElement('div'); status.textContent = `Connecting to ${target}…`;
   const canvas = document.createElement('canvas'); canvas.tabIndex = 0; canvas.style.cssText = 'width:100%;flex:1;min-height:0;background:#000;outline:none;object-fit:contain';
   const disconnect = document.createElement('button'); disconnect.type = 'button'; disconnect.textContent = 'Disconnect';
-  root.append(status, canvas, disconnect);
+  const clipboardSync = document.createElement('button'); clipboardSync.type = 'button'; clipboardSync.textContent = 'Enable clipboard sync';
+  clipboardSync.title = 'Share plain text clipboard with this remote desktop while this connection is open';
+  root.append(status, canvas, clipboardSync, disconnect);
   let session = null;
+  let clipboardSyncEnabled = false;
+  let lastLocalClipboard = '';
+  let lastRemoteClipboard = '';
+  const setClipboardSyncAppearance = () => {
+    clipboardSync.textContent = clipboardSyncEnabled ? 'Disable clipboard sync' : 'Enable clipboard sync';
+    clipboardSync.style.background = clipboardSyncEnabled ? '#2d7d46' : '';
+    clipboardSync.setAttribute('aria-pressed', String(clipboardSyncEnabled));
+  };
+  const pushLocalClipboard = async () => {
+    if (!clipboardSyncEnabled || !session) return;
+    const text = boundedClipboardText(await api.readClipboard());
+    if (text === null) {
+      api.log('RDP clipboard sync skipped local text over 1048576 bytes');
+      return;
+    }
+    if (!text || text === lastLocalClipboard || text === lastRemoteClipboard) return;
+    const content = new ClipboardData();
+    try {
+      content.addText('text/plain;charset=utf-8', text);
+      await session.onClipboardPaste(content);
+      lastLocalClipboard = text;
+      api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
+    } finally {
+      content.free?.();
+    }
+  };
+  clipboardSync.addEventListener('click', async () => {
+    if (!session) {
+      status.textContent = 'Connect before enabling clipboard sync.';
+      return;
+    }
+    clipboardSyncEnabled = !clipboardSyncEnabled;
+    setClipboardSyncAppearance();
+    if (clipboardSyncEnabled) {
+      status.textContent = 'Clipboard sync enabled (plain text, this connection only).';
+      try { await pushLocalClipboard(); } catch (error) { api.log(`RDP clipboard local read failed: ${error}`); }
+    } else {
+      status.textContent = 'Clipboard sync disabled for this connection.';
+    }
+  });
+  setClipboardSyncAppearance();
   disconnect.addEventListener('click', () => { session?.shutdown(); overlay.close(); });
   try {
     const proxyAddress = await api.openRdpBridge({ target });
@@ -141,6 +204,26 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     builder.proxyAddress(proxyAddress); builder.authToken('none');
     builder.desktopSize(new DesktopSize(1280, 720)); builder.renderCanvas(canvas);
     builder.extension(new Extension('enable_credssp', true));
+    builder.forceClipboardUpdateCallback(async () => {
+      try { await pushLocalClipboard(); } catch (error) { api.log(`RDP clipboard update failed: ${error}`); }
+    });
+    builder.remoteClipboardChangedCallback(async (content) => {
+      if (!clipboardSyncEnabled) return;
+      const text = remotePlainText(content);
+      if (text === null) {
+        api.log('RDP clipboard remote-to-local skipped text over 1048576 bytes');
+        return;
+      }
+      if (!text || text === lastRemoteClipboard) return;
+      try {
+        await api.writeClipboard(text);
+        lastRemoteClipboard = text;
+        lastLocalClipboard = text;
+        api.log(`RDP clipboard remote-to-local synced bytes=${new TextEncoder().encode(text).byteLength}`);
+      } catch (error) {
+        api.log(`RDP clipboard remote write failed: ${error}`);
+      }
+    });
     // IronRDP requires a cursor callback before connect(). Keep the callback
     // local to the canvas so a remote cursor never changes the terminal UI.
     builder.setCursorStyleCallbackContext(canvas);
@@ -149,7 +232,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     const desktop = session.desktopSize(); canvas.width = desktop.width; canvas.height = desktop.height;
     setupRdpInputHandlers(canvas, session);
     status.textContent = `Connected: ${desktop.width} × ${desktop.height} — click the desktop to control it.`; canvas.focus();
-    session.run().finally(() => { status.textContent = 'RDP session ended.'; session = null; });
+    session.run().finally(() => { clipboardSyncEnabled = false; setClipboardSyncAppearance(); status.textContent = 'RDP session ended.'; session = null; });
   } catch (error) {
     const detail = formatRdpError(error);
     status.textContent = `Connection failed: ${detail}`;

@@ -1,4 +1,4 @@
-// @fpasoterm-plugin version: 0.1.0
+// @fpasoterm-plugin version: 0.1.1
 // @fpasoterm-plugin description: Prototype RDP client using the declared local bridge.
 // @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:53389
 // Third-party: ironrdp-wasm 1.1.0 (MIT), https://github.com/electerm/ironrdp-wasm
@@ -2037,6 +2037,21 @@ ${val.stack}`;
     }, { passive: false });
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
   }
+  var MAX_CLIPBOARD_BYTES = 1024 * 1024;
+  function boundedClipboardText(value) {
+    const text = String(value || "");
+    return new TextEncoder().encode(text).byteLength <= MAX_CLIPBOARD_BYTES ? text : null;
+  }
+  function remotePlainText(content) {
+    for (const item of content?.items?.() || []) {
+      const mimeType = item.mimeType?.().toLowerCase();
+      if (mimeType === "text/plain" || mimeType === "text/plain;charset=utf-8" || mimeType === "text") {
+        const value = item.value?.();
+        if (typeof value === "string") return boundedClipboardText(value);
+      }
+    }
+    return "";
+  }
   api.registerCommand("rdp-local-bridge", "Open RDP local bridge (prototype)", async () => {
     if (typeof api.openRdpBridge !== "function") {
       throw new Error("RDP local bridge requires fpasoterm 1.6.8 or later.");
@@ -2059,8 +2074,57 @@ ${val.stack}`;
     const disconnect = document.createElement("button");
     disconnect.type = "button";
     disconnect.textContent = "Disconnect";
-    root.append(status, canvas, disconnect);
+    const clipboardSync = document.createElement("button");
+    clipboardSync.type = "button";
+    clipboardSync.textContent = "Enable clipboard sync";
+    clipboardSync.title = "Share plain text clipboard with this remote desktop while this connection is open";
+    root.append(status, canvas, clipboardSync, disconnect);
     let session = null;
+    let clipboardSyncEnabled = false;
+    let lastLocalClipboard = "";
+    let lastRemoteClipboard = "";
+    const setClipboardSyncAppearance = () => {
+      clipboardSync.textContent = clipboardSyncEnabled ? "Disable clipboard sync" : "Enable clipboard sync";
+      clipboardSync.style.background = clipboardSyncEnabled ? "#2d7d46" : "";
+      clipboardSync.setAttribute("aria-pressed", String(clipboardSyncEnabled));
+    };
+    const pushLocalClipboard = async () => {
+      if (!clipboardSyncEnabled || !session) return;
+      const text = boundedClipboardText(await api.readClipboard());
+      if (text === null) {
+        api.log("RDP clipboard sync skipped local text over 1048576 bytes");
+        return;
+      }
+      if (!text || text === lastLocalClipboard || text === lastRemoteClipboard) return;
+      const content = new ClipboardData();
+      try {
+        content.addText("text/plain;charset=utf-8", text);
+        await session.onClipboardPaste(content);
+        lastLocalClipboard = text;
+        api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
+      } finally {
+        content.free?.();
+      }
+    };
+    clipboardSync.addEventListener("click", async () => {
+      if (!session) {
+        status.textContent = "Connect before enabling clipboard sync.";
+        return;
+      }
+      clipboardSyncEnabled = !clipboardSyncEnabled;
+      setClipboardSyncAppearance();
+      if (clipboardSyncEnabled) {
+        status.textContent = "Clipboard sync enabled (plain text, this connection only).";
+        try {
+          await pushLocalClipboard();
+        } catch (error) {
+          api.log(`RDP clipboard local read failed: ${error}`);
+        }
+      } else {
+        status.textContent = "Clipboard sync disabled for this connection.";
+      }
+    });
+    setClipboardSyncAppearance();
     disconnect.addEventListener("click", () => {
       session?.shutdown();
       overlay.close();
@@ -2079,6 +2143,30 @@ ${val.stack}`;
       builder.desktopSize(new DesktopSize(1280, 720));
       builder.renderCanvas(canvas);
       builder.extension(new Extension("enable_credssp", true));
+      builder.forceClipboardUpdateCallback(async () => {
+        try {
+          await pushLocalClipboard();
+        } catch (error) {
+          api.log(`RDP clipboard update failed: ${error}`);
+        }
+      });
+      builder.remoteClipboardChangedCallback(async (content) => {
+        if (!clipboardSyncEnabled) return;
+        const text = remotePlainText(content);
+        if (text === null) {
+          api.log("RDP clipboard remote-to-local skipped text over 1048576 bytes");
+          return;
+        }
+        if (!text || text === lastRemoteClipboard) return;
+        try {
+          await api.writeClipboard(text);
+          lastRemoteClipboard = text;
+          lastLocalClipboard = text;
+          api.log(`RDP clipboard remote-to-local synced bytes=${new TextEncoder().encode(text).byteLength}`);
+        } catch (error) {
+          api.log(`RDP clipboard remote write failed: ${error}`);
+        }
+      });
       builder.setCursorStyleCallbackContext(canvas);
       builder.setCursorStyleCallback((style) => {
         canvas.style.cursor = style || "default";
@@ -2091,6 +2179,8 @@ ${val.stack}`;
       status.textContent = `Connected: ${desktop.width} \xD7 ${desktop.height} \u2014 click the desktop to control it.`;
       canvas.focus();
       session.run().finally(() => {
+        clipboardSyncEnabled = false;
+        setClipboardSyncAppearance();
         status.textContent = "RDP session ended.";
         session = null;
       });

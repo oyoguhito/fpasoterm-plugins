@@ -35,7 +35,7 @@ function build() {
       '__FPASOTERM_RDP_TARGET__': JSON.stringify(target),
     },
     outfile: output,
-    banner: { js: `// @fpasoterm-plugin version: 0.1.0\n// @fpasoterm-plugin description: Prototype RDP client using the declared local bridge.\n// @fpasoterm-plugin allowed-tcp-targets: ${target}\n// Third-party: ironrdp-wasm 1.1.0 (MIT), https://github.com/electerm/ironrdp-wasm\n// License: ports/integration/rdp-local-bridge/THIRD_PARTY_LICENSES/ironrdp-wasm-MIT.txt` },
+    banner: { js: `// @fpasoterm-plugin version: 0.1.1\n// @fpasoterm-plugin description: Prototype RDP client using the declared local bridge.\n// @fpasoterm-plugin allowed-tcp-targets: ${target}\n// Third-party: ironrdp-wasm 1.1.0 (MIT), https://github.com/electerm/ironrdp-wasm\n// License: ports/integration/rdp-local-bridge/THIRD_PARTY_LICENSES/ironrdp-wasm-MIT.txt` },
   });
   console.log(`built RDP prototype port for ${target}`);
 }

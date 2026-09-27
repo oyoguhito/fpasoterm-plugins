@@ -86,6 +86,16 @@ successful connection changes the overlay status to `Connected: WIDTH ×
 HEIGHT`; cancel, a refused connection, or invalid credentials leave a visible
 failure status and do not persist credentials.
 
+## Clipboard
+
+After connection, select **Enable clipboard sync** to permit plain-text
+clipboard redirection for that RDP session. Incoming remote text is copied to
+fpasoterm's shared WebView/OS clipboard. Local text is sent when IronRDP asks
+for a clipboard update and immediately when enabling the control. This setting
+defaults to off for each connection, is cleared on disconnect, does not log or
+persist clipboard contents, and rejects HTML/files/binary formats and text over
+1 MiB. Verify with disposable text in both directions before relying on it.
+
 ## Interaction and cross-platform verification
 
 After the status changes to `Connected`, click inside the remote desktop before
@@ -106,9 +116,9 @@ server in the pull-request test notes and perform the following checks:
    and shortcuts still work normally.
 
 The current prototype maps common browser keys to PS/2 Set 1 scancodes for
-IronRDP. Non-US layouts, IME composition, touch input, clipboard redirection,
-and certificate pinning require separate compatibility work; do not mark them
-as supported without an OS-specific test.
+IronRDP. Non-US layouts, IME composition, touch input, clipboard formats other
+than bounded plain text, and certificate pinning require separate compatibility
+work; do not mark them as supported without an OS-specific test.
 
 For a compatibility-only check against a specific development binary, run:
 
