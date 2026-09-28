@@ -77,6 +77,24 @@ function applyInput(session, event) {
   session.applyInputs(transaction);
 }
 
+// object-fit: contain can place letterbox space inside the canvas element.
+// Translate browser coordinates from the rendered remote-desktop rectangle,
+// rather than the wider element rectangle, before sending RDP coordinates.
+function rdpPointerCoordinates(canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height || !canvas.width || !canvas.height) return null;
+  const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+  const renderedWidth = canvas.width * scale;
+  const renderedHeight = canvas.height * scale;
+  const localX = event.clientX - rect.left - (rect.width - renderedWidth) / 2;
+  const localY = event.clientY - rect.top - (rect.height - renderedHeight) / 2;
+  if (localX < 0 || localY < 0 || localX > renderedWidth || localY > renderedHeight) return null;
+  return {
+    x: Math.min(canvas.width - 1, Math.max(0, Math.round(localX / scale))),
+    y: Math.min(canvas.height - 1, Math.max(0, Math.round(localY / scale))),
+  };
+}
+
 function setupRdpInputHandlers(canvas, session) {
   canvas.addEventListener('keydown', (event) => {
     event.preventDefault(); event.stopPropagation();
@@ -89,14 +107,13 @@ function setupRdpInputHandlers(canvas, session) {
     if (scancode !== undefined) applyInput(session, DeviceEvent.keyReleased(scancode));
   });
   canvas.addEventListener('mousemove', (event) => {
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const x = Math.round((event.clientX - rect.left) * canvas.width / rect.width);
-    const y = Math.round((event.clientY - rect.top) * canvas.height / rect.height);
-    applyInput(session, DeviceEvent.mouseMove(x, y));
+    const coordinates = rdpPointerCoordinates(canvas, event);
+    if (coordinates) applyInput(session, DeviceEvent.mouseMove(coordinates.x, coordinates.y));
   });
   canvas.addEventListener('mousedown', (event) => {
     event.preventDefault(); event.stopPropagation(); canvas.focus();
+    const coordinates = rdpPointerCoordinates(canvas, event);
+    if (coordinates) applyInput(session, DeviceEvent.mouseMove(coordinates.x, coordinates.y));
     applyInput(session, DeviceEvent.mouseButtonPressed(event.button));
   });
   canvas.addEventListener('mouseup', (event) => {
