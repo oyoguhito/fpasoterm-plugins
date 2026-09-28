@@ -90,9 +90,11 @@ failure status and do not persist credentials.
 
 After connection, select **Enable clipboard sync** to permit plain-text
 clipboard redirection for that RDP session. Incoming remote text is copied to
-fpasoterm's shared WebView/OS clipboard. Local text is checked once per second
-while synchronization is enabled, announced as `text/plain`, and cached so the
-same value can be returned when IronRDP asks for it. This setting
+fpasoterm's shared WebView/OS clipboard. Local text is checked when enabling
+synchronization and when focus returns from another application, announced as
+`text/plain`, and cached so the same value can be returned when IronRDP asks
+for it. Continuous polling is deliberately avoided so clipboard commands
+cannot interfere with remote input responsiveness. This setting
 defaults to off for each connection, is cleared on disconnect, does not log or
 persist clipboard contents, and rejects HTML/files/binary formats and text over
 1 MiB. Verify with disposable text in both directions before relying on it.
