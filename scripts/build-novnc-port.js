@@ -15,6 +15,12 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const entry = path.join(root, 'scripts', 'novnc-plugin-entry.js');
 const output = path.join(root, 'ports', 'integration', 'novnc-local-bridge', 'plugin.js');
+const usage = `Usage:
+  npm run port:integration:novnc-local-bridge:build
+  npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
+  npm run port:integration:novnc-local-bridge:reset
+
+The build command uses the strict target currently recorded in the noVNC entry.`;
 
 function declaredTarget(source) {
   const match = source.match(/openVncBridge\(\{ target: '((?:tcp|tls):\/\/[^']+)' \}\)/);
@@ -41,5 +47,24 @@ function build() {
   console.log(`built noVNC verification port for ${target}`);
 }
 
-if (require.main === module) build();
-module.exports = { build, declaredTarget };
+function main(args = process.argv.slice(2)) {
+  if (args.length === 1 && ['--help', '-h', 'help'].includes(args[0])) {
+    console.log(usage);
+    return;
+  }
+  if (args.length > 0) {
+    console.error(`Error: unsupported argument: ${args.join(' ')}`);
+    console.error(`\n${usage}`);
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    build();
+  } catch (error) {
+    console.error(`Error: ${error?.message || error}`);
+    console.error(`\n${usage}`);
+    process.exitCode = 1;
+  }
+}
+if (require.main === module) main();
+module.exports = { build, declaredTarget, main, usage };

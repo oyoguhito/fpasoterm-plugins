@@ -7,6 +7,12 @@ const entry = path.join(root, 'scripts', 'rdp-plugin-entry.js');
 const output = path.join(root, 'ports', 'integration', 'rdp-local-bridge', 'plugin.js');
 const wasm = path.join(root, 'node_modules', 'ironrdp-wasm', 'pkg', 'rdp_client_bg.wasm');
 const defaultTarget = 'tcp://127.0.0.1:53389';
+const usage = `Usage:
+  npm run port:integration:rdp-local-bridge:build
+  FPASOTERM_RDP_TARGET=tcp://host:3389 npm run port:integration:rdp-local-bridge:build
+
+The target must be one exact tcp://host:port or tls://host:port URL.
+The default target is ${defaultTarget}.`;
 
 function configuredTarget(value = process.env.FPASOTERM_RDP_TARGET || defaultTarget) {
   let parsed;
@@ -39,5 +45,24 @@ function build() {
   });
   console.log(`built RDP prototype port for ${target}`);
 }
-if (require.main === module) build();
-module.exports = { build, configuredTarget };
+function main(args = process.argv.slice(2)) {
+  if (args.length === 1 && ['--help', '-h', 'help'].includes(args[0])) {
+    console.log(usage);
+    return;
+  }
+  if (args.length > 0) {
+    console.error(`Error: unsupported argument: ${args.join(' ')}`);
+    console.error(`\n${usage}`);
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    build();
+  } catch (error) {
+    console.error(`Error: ${error?.message || error}`);
+    console.error(`\n${usage}`);
+    process.exitCode = 1;
+  }
+}
+if (require.main === module) main();
+module.exports = { build, configuredTarget, main, usage };

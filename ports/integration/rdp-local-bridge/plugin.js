@@ -2096,6 +2096,8 @@ ${val.stack}`;
     let clipboardSyncEnabled = false;
     let lastLocalClipboard = "";
     let lastRemoteClipboard = "";
+    let releaseRdpKeyCapture = () => {
+    };
     const setClipboardSyncAppearance = () => {
       clipboardSync.textContent = clipboardSyncEnabled ? "Disable clipboard sync" : "Enable clipboard sync";
       clipboardSync.style.background = clipboardSyncEnabled ? "#2d7d46" : "";
@@ -2139,6 +2141,7 @@ ${val.stack}`;
     });
     setClipboardSyncAppearance();
     disconnect.addEventListener("click", () => {
+      releaseRdpKeyCapture();
       session?.shutdown();
       overlay.close();
     });
@@ -2189,9 +2192,19 @@ ${val.stack}`;
       canvas.width = desktop.width;
       canvas.height = desktop.height;
       setupRdpInputHandlers(canvas, session);
+      releaseRdpKeyCapture = overlay.captureKeys?.((event) => {
+        if (event.code !== "Escape" && event.key !== "Escape") return false;
+        const scancode = SCANCODE_MAP[event.code];
+        if (scancode === void 0) return true;
+        if (event.type === "keydown") applyInput(session, DeviceEvent.keyPressed(scancode));
+        if (event.type === "keyup") applyInput(session, DeviceEvent.keyReleased(scancode));
+        return true;
+      }) || (() => {
+      });
       status.textContent = `Connected: ${desktop.width} \xD7 ${desktop.height} \u2014 click the desktop to control it.`;
       canvas.focus();
       session.run().finally(() => {
+        releaseRdpKeyCapture();
         clipboardSyncEnabled = false;
         setClipboardSyncAppearance();
         status.textContent = "RDP session ended.";

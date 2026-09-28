@@ -173,6 +173,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   let clipboardSyncEnabled = false;
   let lastLocalClipboard = '';
   let lastRemoteClipboard = '';
+  let releaseRdpKeyCapture = () => {};
   const setClipboardSyncAppearance = () => {
     clipboardSync.textContent = clipboardSyncEnabled ? 'Disable clipboard sync' : 'Enable clipboard sync';
     clipboardSync.style.background = clipboardSyncEnabled ? '#2d7d46' : '';
@@ -211,7 +212,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     }
   });
   setClipboardSyncAppearance();
-  disconnect.addEventListener('click', () => { session?.shutdown(); overlay.close(); });
+  disconnect.addEventListener('click', () => { releaseRdpKeyCapture(); session?.shutdown(); overlay.close(); });
   try {
     const proxyAddress = await api.openRdpBridge({ target });
     await init(wasmBytes()); setup('warn');
@@ -248,8 +249,19 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     session = await builder.connect();
     const desktop = session.desktopSize(); canvas.width = desktop.width; canvas.height = desktop.height;
     setupRdpInputHandlers(canvas, session);
+    // `openElementOverlay` normally interprets Escape as Close. Claim Escape
+    // before that host handler and forward both its press and release to RDP.
+    // The explicit Disconnect/Close controls remain the only close actions.
+    releaseRdpKeyCapture = overlay.captureKeys?.((event) => {
+      if (event.code !== 'Escape' && event.key !== 'Escape') return false;
+      const scancode = SCANCODE_MAP[event.code];
+      if (scancode === undefined) return true;
+      if (event.type === 'keydown') applyInput(session, DeviceEvent.keyPressed(scancode));
+      if (event.type === 'keyup') applyInput(session, DeviceEvent.keyReleased(scancode));
+      return true;
+    }) || (() => {});
     status.textContent = `Connected: ${desktop.width} × ${desktop.height} — click the desktop to control it.`; canvas.focus();
-    session.run().finally(() => { clipboardSyncEnabled = false; setClipboardSyncAppearance(); status.textContent = 'RDP session ended.'; session = null; });
+    session.run().finally(() => { releaseRdpKeyCapture(); clipboardSyncEnabled = false; setClipboardSyncAppearance(); status.textContent = 'RDP session ended.'; session = null; });
   } catch (error) {
     const detail = formatRdpError(error);
     status.textContent = `Connection failed: ${detail}`;

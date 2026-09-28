@@ -4,6 +4,11 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 
 const root = path.resolve(__dirname, '..');
+const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+assert.equal(packageJson.scripts['port:integration:rdp-local-bridge:help'], 'node scripts/build-rdp-port.js --help');
+assert.equal(packageJson.scripts['port:integration:novnc-local-bridge:help'], 'node scripts/build-novnc-port.js --help');
+assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-rdp-port.js'), 'utf8'), /FPASOTERM_RDP_TARGET=tcp:\/\/host:3389/);
+assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /novnc-local-bridge:configure -- tcp:\/\/host:port/);
 const portsApi = require('./ports');
 const portsSource = fs.readFileSync(path.join(root, 'scripts', 'ports.ts'), 'utf8');
 assert.doesNotMatch(portsSource, /command === 'install'/);
@@ -137,6 +142,9 @@ assert.match(rdpEntrySource, /renderedWidth/);
 assert.match(rdpEntrySource, /function setupRdpInputHandlers\(canvas, session\)/);
 assert.match(rdpEntrySource, /DeviceEvent\.mouseButtonPressed/);
 assert.match(rdpEntrySource, /DeviceEvent\.keyPressed/);
+assert.match(rdpEntrySource, /overlay\.captureKeys\?\.\(\(event\) =>/);
+assert.match(rdpEntrySource, /event\.code !== 'Escape' && event\.key !== 'Escape'/);
+assert.match(rdpEntrySource, /event\.type === 'keyup'.*DeviceEvent\.keyReleased/);
 assert.match(rdpEntrySource, /setupRdpInputHandlers\(canvas, session\)/);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),
