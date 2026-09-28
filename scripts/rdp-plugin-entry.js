@@ -132,6 +132,7 @@ function setupRdpInputHandlers(canvas, session) {
 // intentionally accepts only bounded plain text, which keeps clipboard data
 // out of diagnostics and avoids transferring files, HTML, or binary payloads.
 const MAX_CLIPBOARD_BYTES = 1024 * 1024;
+const CLIPBOARD_POLL_MS = 1000;
 function boundedClipboardText(value) {
   const text = String(value || '');
   return new TextEncoder().encode(text).byteLength <= MAX_CLIPBOARD_BYTES ? text : null;
@@ -173,35 +174,49 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   let clipboardSyncEnabled = false;
   let lastLocalClipboard = '';
   let lastRemoteClipboard = '';
+  let clipboardPollTimer = null;
+  let clipboardReadFailureLogged = false;
   let releaseRdpKeyCapture = () => {};
   const setClipboardSyncAppearance = () => {
     clipboardSync.textContent = clipboardSyncEnabled ? 'Disable clipboard sync' : 'Enable clipboard sync';
     clipboardSync.style.background = clipboardSyncEnabled ? '#2d7d46' : '';
     clipboardSync.setAttribute('aria-pressed', String(clipboardSyncEnabled));
   };
-  const disableClipboardSyncAfterReadFailure = (error) => {
-    clipboardSyncEnabled = false;
-    setClipboardSyncAppearance();
-    status.textContent = 'Clipboard sync unavailable: this WebView denied clipboard read access.';
-    api.log(`RDP clipboard sync disabled after local read failure: ${error}`);
+  const sendLocalClipboard = async (text) => {
+    if (!clipboardSyncEnabled || !session || !text) return;
+    const content = new ClipboardData();
+    try {
+      // IronRDP and Windows advertise the generic plain-text format here.
+      // Adding only a charset-qualified MIME type can leave the remote side
+      // with no format it recognises and therefore no data request.
+      content.addText('text/plain', text);
+      await session.onClipboardPaste(content);
+      api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
+    } finally {
+      content.free?.();
+    }
   };
-  const pushLocalClipboard = async () => {
+  const readAndAnnounceLocalClipboard = async () => {
     if (!clipboardSyncEnabled || !session) return;
-    const text = boundedClipboardText(await api.readClipboard());
+    let rawText;
+    try {
+      rawText = await api.readClipboard();
+      clipboardReadFailureLogged = false;
+    } catch (error) {
+      if (!clipboardReadFailureLogged) {
+        api.log(`RDP clipboard local read failed; remote-to-local remains enabled: ${error}`);
+        clipboardReadFailureLogged = true;
+      }
+      return;
+    }
+    const text = boundedClipboardText(rawText);
     if (text === null) {
       api.log('RDP clipboard sync skipped local text over 1048576 bytes');
       return;
     }
     if (!text || text === lastLocalClipboard || text === lastRemoteClipboard) return;
-    const content = new ClipboardData();
-    try {
-      content.addText('text/plain;charset=utf-8', text);
-      await session.onClipboardPaste(content);
-      lastLocalClipboard = text;
-      api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
-    } finally {
-      content.free?.();
-    }
+    await sendLocalClipboard(text);
+    lastLocalClipboard = text;
   };
   clipboardSync.addEventListener('click', async () => {
     if (!session) {
@@ -212,13 +227,19 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     setClipboardSyncAppearance();
     if (clipboardSyncEnabled) {
       status.textContent = 'Clipboard sync enabled (plain text, this connection only).';
-      try { await pushLocalClipboard(); } catch (error) { disableClipboardSyncAfterReadFailure(error); }
+      try { await readAndAnnounceLocalClipboard(); }
+      catch (error) { api.log(`RDP clipboard local announce failed: ${error}`); }
+      clipboardPollTimer = setInterval(() => {
+        readAndAnnounceLocalClipboard().catch((error) => api.log(`RDP clipboard local announce failed: ${error}`));
+      }, CLIPBOARD_POLL_MS);
     } else {
+      clearInterval(clipboardPollTimer);
+      clipboardPollTimer = null;
       status.textContent = 'Clipboard sync disabled for this connection.';
     }
   });
   setClipboardSyncAppearance();
-  disconnect.addEventListener('click', () => { releaseRdpKeyCapture(); session?.shutdown(); overlay.close(); });
+  disconnect.addEventListener('click', () => { releaseRdpKeyCapture(); clearInterval(clipboardPollTimer); clipboardPollTimer = null; session?.shutdown(); overlay.close(); });
   try {
     const proxyAddress = await api.openRdpBridge({ target });
     await init(wasmBytes()); setup('warn');
@@ -229,7 +250,10 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     builder.desktopSize(new DesktopSize(1280, 720)); builder.renderCanvas(canvas);
     builder.extension(new Extension('enable_credssp', true));
     builder.forceClipboardUpdateCallback(async () => {
-      try { await pushLocalClipboard(); } catch (error) { disableClipboardSyncAfterReadFailure(error); }
+      // CLIPRDR is announce-then-request. Re-send the last value already
+      // announced instead of attempting a new WebView read while RDP has focus.
+      try { await sendLocalClipboard(lastLocalClipboard); }
+      catch (error) { api.log(`RDP clipboard cached update failed: ${error}`); }
     });
     builder.remoteClipboardChangedCallback(async (content) => {
       if (!clipboardSyncEnabled) return;
@@ -238,7 +262,12 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
         api.log('RDP clipboard remote-to-local skipped text over 1048576 bytes');
         return;
       }
-      if (!text || text === lastRemoteClipboard) return;
+      if (!text) {
+        const mimeTypes = Array.from(content?.items?.() || [], (item) => item.mimeType?.() || 'unknown');
+        api.log(`RDP clipboard remote update contained no supported plain text formats=${mimeTypes.join(',') || 'none'}`);
+        return;
+      }
+      if (text === lastRemoteClipboard) return;
       try {
         await api.writeClipboard(text);
         lastRemoteClipboard = text;
@@ -267,7 +296,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
       return true;
     }) || (() => {});
     status.textContent = `Connected: ${desktop.width} × ${desktop.height} — click the desktop to control it.`; canvas.focus();
-    session.run().finally(() => { releaseRdpKeyCapture(); clipboardSyncEnabled = false; setClipboardSyncAppearance(); status.textContent = 'RDP session ended.'; session = null; });
+    session.run().finally(() => { releaseRdpKeyCapture(); clearInterval(clipboardPollTimer); clipboardPollTimer = null; clipboardSyncEnabled = false; setClipboardSyncAppearance(); status.textContent = 'RDP session ended.'; session = null; });
   } catch (error) {
     const detail = formatRdpError(error);
     status.textContent = `Connection failed: ${detail}`;

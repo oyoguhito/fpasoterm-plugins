@@ -2051,6 +2051,7 @@ ${val.stack}`;
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
   }
   var MAX_CLIPBOARD_BYTES = 1024 * 1024;
+  var CLIPBOARD_POLL_MS = 1e3;
   function boundedClipboardText(value) {
     const text = String(value || "");
     return new TextEncoder().encode(text).byteLength <= MAX_CLIPBOARD_BYTES ? text : null;
@@ -2096,6 +2097,8 @@ ${val.stack}`;
     let clipboardSyncEnabled = false;
     let lastLocalClipboard = "";
     let lastRemoteClipboard = "";
+    let clipboardPollTimer = null;
+    let clipboardReadFailureLogged = false;
     let releaseRdpKeyCapture = () => {
     };
     const setClipboardSyncAppearance = () => {
@@ -2103,29 +2106,38 @@ ${val.stack}`;
       clipboardSync.style.background = clipboardSyncEnabled ? "#2d7d46" : "";
       clipboardSync.setAttribute("aria-pressed", String(clipboardSyncEnabled));
     };
-    const disableClipboardSyncAfterReadFailure = (error) => {
-      clipboardSyncEnabled = false;
-      setClipboardSyncAppearance();
-      status.textContent = "Clipboard sync unavailable: this WebView denied clipboard read access.";
-      api.log(`RDP clipboard sync disabled after local read failure: ${error}`);
+    const sendLocalClipboard = async (text) => {
+      if (!clipboardSyncEnabled || !session || !text) return;
+      const content = new ClipboardData();
+      try {
+        content.addText("text/plain", text);
+        await session.onClipboardPaste(content);
+        api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
+      } finally {
+        content.free?.();
+      }
     };
-    const pushLocalClipboard = async () => {
+    const readAndAnnounceLocalClipboard = async () => {
       if (!clipboardSyncEnabled || !session) return;
-      const text = boundedClipboardText(await api.readClipboard());
+      let rawText;
+      try {
+        rawText = await api.readClipboard();
+        clipboardReadFailureLogged = false;
+      } catch (error) {
+        if (!clipboardReadFailureLogged) {
+          api.log(`RDP clipboard local read failed; remote-to-local remains enabled: ${error}`);
+          clipboardReadFailureLogged = true;
+        }
+        return;
+      }
+      const text = boundedClipboardText(rawText);
       if (text === null) {
         api.log("RDP clipboard sync skipped local text over 1048576 bytes");
         return;
       }
       if (!text || text === lastLocalClipboard || text === lastRemoteClipboard) return;
-      const content = new ClipboardData();
-      try {
-        content.addText("text/plain;charset=utf-8", text);
-        await session.onClipboardPaste(content);
-        lastLocalClipboard = text;
-        api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
-      } finally {
-        content.free?.();
-      }
+      await sendLocalClipboard(text);
+      lastLocalClipboard = text;
     };
     clipboardSync.addEventListener("click", async () => {
       if (!session) {
@@ -2137,17 +2149,24 @@ ${val.stack}`;
       if (clipboardSyncEnabled) {
         status.textContent = "Clipboard sync enabled (plain text, this connection only).";
         try {
-          await pushLocalClipboard();
+          await readAndAnnounceLocalClipboard();
         } catch (error) {
-          disableClipboardSyncAfterReadFailure(error);
+          api.log(`RDP clipboard local announce failed: ${error}`);
         }
+        clipboardPollTimer = setInterval(() => {
+          readAndAnnounceLocalClipboard().catch((error) => api.log(`RDP clipboard local announce failed: ${error}`));
+        }, CLIPBOARD_POLL_MS);
       } else {
+        clearInterval(clipboardPollTimer);
+        clipboardPollTimer = null;
         status.textContent = "Clipboard sync disabled for this connection.";
       }
     });
     setClipboardSyncAppearance();
     disconnect.addEventListener("click", () => {
       releaseRdpKeyCapture();
+      clearInterval(clipboardPollTimer);
+      clipboardPollTimer = null;
       session?.shutdown();
       overlay.close();
     });
@@ -2167,9 +2186,9 @@ ${val.stack}`;
       builder.extension(new Extension("enable_credssp", true));
       builder.forceClipboardUpdateCallback(async () => {
         try {
-          await pushLocalClipboard();
+          await sendLocalClipboard(lastLocalClipboard);
         } catch (error) {
-          disableClipboardSyncAfterReadFailure(error);
+          api.log(`RDP clipboard cached update failed: ${error}`);
         }
       });
       builder.remoteClipboardChangedCallback(async (content) => {
@@ -2179,7 +2198,12 @@ ${val.stack}`;
           api.log("RDP clipboard remote-to-local skipped text over 1048576 bytes");
           return;
         }
-        if (!text || text === lastRemoteClipboard) return;
+        if (!text) {
+          const mimeTypes = Array.from(content?.items?.() || [], (item) => item.mimeType?.() || "unknown");
+          api.log(`RDP clipboard remote update contained no supported plain text formats=${mimeTypes.join(",") || "none"}`);
+          return;
+        }
+        if (text === lastRemoteClipboard) return;
         try {
           await api.writeClipboard(text);
           lastRemoteClipboard = text;
@@ -2211,6 +2235,8 @@ ${val.stack}`;
       canvas.focus();
       session.run().finally(() => {
         releaseRdpKeyCapture();
+        clearInterval(clipboardPollTimer);
+        clipboardPollTimer = null;
         clipboardSyncEnabled = false;
         setClipboardSyncAppearance();
         status.textContent = "RDP session ended.";
