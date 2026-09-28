@@ -9,6 +9,8 @@ assert.equal(packageJson.scripts['port:integration:rdp-local-bridge:help'], 'nod
 assert.equal(packageJson.scripts['port:integration:novnc-local-bridge:help'], 'node scripts/build-novnc-port.js --help');
 assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-rdp-port.js'), 'utf8'), /FPASOTERM_RDP_TARGET=tcp:\/\/host:3389/);
 assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /novnc-local-bridge:configure -- tcp:\/\/host:port/);
+assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /Default after reset: \$\{defaultTarget\}/);
+assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /Currently configured target: \$\{target\}/);
 const portsApi = require('./ports');
 const portsSource = fs.readFileSync(path.join(root, 'scripts', 'ports.ts'), 'utf8');
 assert.doesNotMatch(portsSource, /command === 'install'/);
@@ -145,6 +147,10 @@ assert.match(rdpEntrySource, /DeviceEvent\.keyPressed/);
 assert.match(rdpEntrySource, /overlay\.captureKeys\?\.\(\(event\) =>/);
 assert.match(rdpEntrySource, /event\.code !== 'Escape' && event\.key !== 'Escape'/);
 assert.match(rdpEntrySource, /event\.type === 'keyup'.*DeviceEvent\.keyReleased/);
+assert.match(rdpEntrySource, /const disableClipboardSyncAfterReadFailure = \(error\) =>/);
+assert.match(rdpEntrySource, /Clipboard sync unavailable: this WebView denied clipboard read access/);
+assert.match(rdpEntrySource, /RDP clipboard sync disabled after local read failure/);
+assert.match(rdpReadme, /WebView platforms deny programmatic clipboard reads/);
 assert.match(rdpEntrySource, /setupRdpInputHandlers\(canvas, session\)/);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),

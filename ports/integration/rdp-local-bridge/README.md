@@ -96,6 +96,12 @@ defaults to off for each connection, is cleared on disconnect, does not log or
 persist clipboard contents, and rejects HTML/files/binary formats and text over
 1 MiB. Verify with disposable text in both directions before relying on it.
 
+Some WebView platforms deny programmatic clipboard reads even after the button
+click. In that case the control returns to **Enable clipboard sync** and shows
+an unavailable status; this is a platform permission restriction, not an RDP
+connection failure. Copy the text again and retry after granting clipboard
+access where the platform provides such a permission.
+
 ## Interaction and cross-platform verification
 
 After the status changes to `Connected`, click inside the remote desktop before

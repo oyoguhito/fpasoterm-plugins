@@ -2103,6 +2103,12 @@ ${val.stack}`;
       clipboardSync.style.background = clipboardSyncEnabled ? "#2d7d46" : "";
       clipboardSync.setAttribute("aria-pressed", String(clipboardSyncEnabled));
     };
+    const disableClipboardSyncAfterReadFailure = (error) => {
+      clipboardSyncEnabled = false;
+      setClipboardSyncAppearance();
+      status.textContent = "Clipboard sync unavailable: this WebView denied clipboard read access.";
+      api.log(`RDP clipboard sync disabled after local read failure: ${error}`);
+    };
     const pushLocalClipboard = async () => {
       if (!clipboardSyncEnabled || !session) return;
       const text = boundedClipboardText(await api.readClipboard());
@@ -2133,7 +2139,7 @@ ${val.stack}`;
         try {
           await pushLocalClipboard();
         } catch (error) {
-          api.log(`RDP clipboard local read failed: ${error}`);
+          disableClipboardSyncAfterReadFailure(error);
         }
       } else {
         status.textContent = "Clipboard sync disabled for this connection.";
@@ -2163,7 +2169,7 @@ ${val.stack}`;
         try {
           await pushLocalClipboard();
         } catch (error) {
-          api.log(`RDP clipboard update failed: ${error}`);
+          disableClipboardSyncAfterReadFailure(error);
         }
       });
       builder.remoteClipboardChangedCallback(async (content) => {

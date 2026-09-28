@@ -15,12 +15,18 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const entry = path.join(root, 'scripts', 'novnc-plugin-entry.js');
 const output = path.join(root, 'ports', 'integration', 'novnc-local-bridge', 'plugin.js');
-const usage = `Usage:
+const defaultTarget = 'tcp://127.0.0.1:59999';
+function usage(target = defaultTarget) {
+  return `Usage:
   npm run port:integration:novnc-local-bridge:build
   npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
   npm run port:integration:novnc-local-bridge:reset
 
+Default after reset: ${defaultTarget}
+Currently configured target: ${target}
+
 The build command uses the strict target currently recorded in the noVNC entry.`;
+}
 
 function declaredTarget(source) {
   const match = source.match(/openVncBridge\(\{ target: '((?:tcp|tls):\/\/[^']+)' \}\)/);
@@ -47,14 +53,22 @@ function build() {
   console.log(`built noVNC verification port for ${target}`);
 }
 
+function currentTargetOrDefault() {
+  try {
+    return declaredTarget(fs.readFileSync(entry, 'utf8'));
+  } catch {
+    return defaultTarget;
+  }
+}
+
 function main(args = process.argv.slice(2)) {
   if (args.length === 1 && ['--help', '-h', 'help'].includes(args[0])) {
-    console.log(usage);
+    console.log(usage(currentTargetOrDefault()));
     return;
   }
   if (args.length > 0) {
     console.error(`Error: unsupported argument: ${args.join(' ')}`);
-    console.error(`\n${usage}`);
+    console.error(`\n${usage(currentTargetOrDefault())}`);
     process.exitCode = 2;
     return;
   }
@@ -62,9 +76,9 @@ function main(args = process.argv.slice(2)) {
     build();
   } catch (error) {
     console.error(`Error: ${error?.message || error}`);
-    console.error(`\n${usage}`);
+    console.error(`\n${usage(currentTargetOrDefault())}`);
     process.exitCode = 1;
   }
 }
 if (require.main === module) main();
-module.exports = { build, declaredTarget, main, usage };
+module.exports = { build, declaredTarget, currentTargetOrDefault, defaultTarget, main, usage };

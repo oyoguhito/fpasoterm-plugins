@@ -179,6 +179,12 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     clipboardSync.style.background = clipboardSyncEnabled ? '#2d7d46' : '';
     clipboardSync.setAttribute('aria-pressed', String(clipboardSyncEnabled));
   };
+  const disableClipboardSyncAfterReadFailure = (error) => {
+    clipboardSyncEnabled = false;
+    setClipboardSyncAppearance();
+    status.textContent = 'Clipboard sync unavailable: this WebView denied clipboard read access.';
+    api.log(`RDP clipboard sync disabled after local read failure: ${error}`);
+  };
   const pushLocalClipboard = async () => {
     if (!clipboardSyncEnabled || !session) return;
     const text = boundedClipboardText(await api.readClipboard());
@@ -206,7 +212,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     setClipboardSyncAppearance();
     if (clipboardSyncEnabled) {
       status.textContent = 'Clipboard sync enabled (plain text, this connection only).';
-      try { await pushLocalClipboard(); } catch (error) { api.log(`RDP clipboard local read failed: ${error}`); }
+      try { await pushLocalClipboard(); } catch (error) { disableClipboardSyncAfterReadFailure(error); }
     } else {
       status.textContent = 'Clipboard sync disabled for this connection.';
     }
@@ -223,7 +229,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     builder.desktopSize(new DesktopSize(1280, 720)); builder.renderCanvas(canvas);
     builder.extension(new Extension('enable_credssp', true));
     builder.forceClipboardUpdateCallback(async () => {
-      try { await pushLocalClipboard(); } catch (error) { api.log(`RDP clipboard update failed: ${error}`); }
+      try { await pushLocalClipboard(); } catch (error) { disableClipboardSyncAfterReadFailure(error); }
     });
     builder.remoteClipboardChangedCallback(async (content) => {
       if (!clipboardSyncEnabled) return;
