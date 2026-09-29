@@ -112,9 +112,10 @@ typing. The port forwards keyboard, pointer, button, and wheel events only from
 the RDP canvas, so fpasoterm shortcuts outside the overlay remain available.
 Pointer movement is coalesced to one update per browser animation frame so
 high-DPI mice and touchpads do not starve remote desktop canvas rendering.
-The prototype requests a 1024 × 576 remote desktop by default. This reduces
-WebAssembly bitmap decoding, network traffic, and Canvas upload work compared
-with 1280 × 720, while CSS still scales the desktop to the overlay.
+The prototype requests a 1280 × 720 remote desktop. Reducing the negotiated
+desktop size was tested but reverted because some servers stopped after a
+partial initial desktop update. Input-event coalescing remains enabled because
+it reduces UI-thread pressure without changing the negotiated framebuffer.
 
 ChromeOS (Crostini) verification passed on 2026-09-23. Before publishing for
 another OS, record the OS version, window system, browser engine, and RDP

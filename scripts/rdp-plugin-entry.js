@@ -5,11 +5,8 @@ const wasmBase64 = __FPASOTERM_RDP_WASM_BASE64__;
 // writes the same exact target to the generated capability header.
 const target = __FPASOTERM_RDP_TARGET__;
 const api = window.fpasotermPluginApi;
-// WebAssembly bitmap decoding and Canvas upload share the WebView UI thread.
-// A moderate default keeps ARM/ChromeOS responsive while the CSS canvas still
-// scales to the available overlay size.
-const DESKTOP_WIDTH = 1024;
-const DESKTOP_HEIGHT = 576;
+const DESKTOP_WIDTH = 1280;
+const DESKTOP_HEIGHT = 720;
 
 function wasmBytes() {
   const binary = atob(wasmBase64);
