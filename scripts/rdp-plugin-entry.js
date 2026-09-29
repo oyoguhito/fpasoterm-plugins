@@ -5,6 +5,11 @@ const wasmBase64 = __FPASOTERM_RDP_WASM_BASE64__;
 // writes the same exact target to the generated capability header.
 const target = __FPASOTERM_RDP_TARGET__;
 const api = window.fpasotermPluginApi;
+// WebAssembly bitmap decoding and Canvas upload share the WebView UI thread.
+// A moderate default keeps ARM/ChromeOS responsive while the CSS canvas still
+// scales to the available overlay size.
+const DESKTOP_WIDTH = 1024;
+const DESKTOP_HEIGHT = 576;
 
 function wasmBytes() {
   const binary = atob(wasmBase64);
@@ -260,7 +265,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     builder.username(username); builder.password(password); builder.destination(target.replace(/^(?:tcp|tls):\/\//, ''));
     if (domain.trim()) builder.serverDomain(domain.trim());
     builder.proxyAddress(proxyAddress); builder.authToken('none');
-    builder.desktopSize(new DesktopSize(1280, 720)); builder.renderCanvas(canvas);
+    builder.desktopSize(new DesktopSize(DESKTOP_WIDTH, DESKTOP_HEIGHT)); builder.renderCanvas(canvas);
     builder.extension(new Extension('enable_credssp', true));
     builder.forceClipboardUpdateCallback(async () => {
       // CLIPRDR is announce-then-request. Re-send the last value already

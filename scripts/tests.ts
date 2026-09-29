@@ -145,6 +145,9 @@ assert.match(rdpEntrySource, /function setupRdpInputHandlers\(canvas, session\)/
 assert.match(rdpEntrySource, /DeviceEvent\.mouseButtonPressed/);
 assert.match(rdpEntrySource, /requestAnimationFrame\(flushPointerMove\)/);
 assert.match(rdpEntrySource, /cancelAnimationFrame\(pointerFrame\)/);
+assert.match(rdpEntrySource, /const DESKTOP_WIDTH = 1024/);
+assert.match(rdpEntrySource, /const DESKTOP_HEIGHT = 576/);
+assert.match(rdpEntrySource, /new DesktopSize\(DESKTOP_WIDTH, DESKTOP_HEIGHT\)/);
 assert.match(rdpEntrySource, /DeviceEvent\.keyPressed/);
 assert.match(rdpEntrySource, /overlay\.captureKeys\?\.\(\(event\) =>/);
 assert.match(rdpEntrySource, /event\.code !== 'Escape' && event\.key !== 'Escape'/);
