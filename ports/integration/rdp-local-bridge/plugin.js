@@ -2091,18 +2091,23 @@ ${val.stack}`;
     clipboardSync.type = "button";
     clipboardSync.textContent = "Enable clipboard sync";
     clipboardSync.title = "Share plain text clipboard with this remote desktop while this connection is open";
-    root.append(status, canvas, clipboardSync, disconnect);
+    const clipboardPaste = document.createElement("input");
+    clipboardPaste.type = "text";
+    clipboardPaste.placeholder = "Local \u2192 RDP: click here, then press Ctrl+V";
+    clipboardPaste.title = "Uses a user-initiated paste event when this WebView blocks clipboard reads";
+    clipboardPaste.disabled = true;
+    root.append(status, canvas, clipboardSync, clipboardPaste, disconnect);
     let session = null;
     let clipboardSyncEnabled = false;
     let lastLocalClipboard = "";
     let lastRemoteClipboard = "";
-    let clipboardReadFailureLogged = false;
     let releaseRdpKeyCapture = () => {
     };
     const setClipboardSyncAppearance = () => {
       clipboardSync.textContent = clipboardSyncEnabled ? "Disable clipboard sync" : "Enable clipboard sync";
       clipboardSync.style.background = clipboardSyncEnabled ? "#2d7d46" : "";
       clipboardSync.setAttribute("aria-pressed", String(clipboardSyncEnabled));
+      clipboardPaste.disabled = !clipboardSyncEnabled;
     };
     const sendLocalClipboard = async (text) => {
       if (!clipboardSyncEnabled || !session || !text) return;
@@ -2115,34 +2120,29 @@ ${val.stack}`;
         content.free?.();
       }
     };
-    const readAndAnnounceLocalClipboard = async () => {
+    clipboardPaste.addEventListener("paste", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       if (!clipboardSyncEnabled || !session) return;
-      let rawText;
-      try {
-        rawText = await api.readClipboard();
-        clipboardReadFailureLogged = false;
-      } catch (error) {
-        if (!clipboardReadFailureLogged) {
-          api.log(`RDP clipboard local read failed; remote-to-local remains enabled: ${error}`);
-          clipboardReadFailureLogged = true;
-        }
-        return;
-      }
-      const text = boundedClipboardText(rawText);
+      const text = boundedClipboardText(event.clipboardData?.getData("text/plain") || "");
       if (text === null) {
         api.log("RDP clipboard sync skipped local text over 1048576 bytes");
         return;
       }
-      if (!text || text === lastLocalClipboard || text === lastRemoteClipboard) return;
-      await sendLocalClipboard(text);
-      lastLocalClipboard = text;
-    };
-    const onWindowFocus = () => {
-      if (!clipboardSyncEnabled) return;
-      readAndAnnounceLocalClipboard().catch((error) => api.log(`RDP clipboard local announce failed: ${error}`));
-    };
-    window.addEventListener("focus", onWindowFocus);
-    clipboardSync.addEventListener("click", async () => {
+      if (!text) {
+        api.log("RDP clipboard paste event contained no plain text");
+        return;
+      }
+      try {
+        await sendLocalClipboard(text);
+        lastLocalClipboard = text;
+        status.textContent = "Local clipboard sent to RDP. Paste inside the remote desktop.";
+        canvas.focus();
+      } catch (error) {
+        api.log(`RDP clipboard local announce failed: ${error}`);
+      }
+    });
+    clipboardSync.addEventListener("click", () => {
       if (!session) {
         status.textContent = "Connect before enabling clipboard sync.";
         return;
@@ -2150,12 +2150,8 @@ ${val.stack}`;
       clipboardSyncEnabled = !clipboardSyncEnabled;
       setClipboardSyncAppearance();
       if (clipboardSyncEnabled) {
-        status.textContent = "Clipboard sync enabled (plain text, this connection only).";
-        try {
-          await readAndAnnounceLocalClipboard();
-        } catch (error) {
-          api.log(`RDP clipboard local announce failed: ${error}`);
-        }
+        status.textContent = "Clipboard sync enabled. For local \u2192 RDP, use the Ctrl+V field below.";
+        clipboardPaste.focus();
       } else {
         status.textContent = "Clipboard sync disabled for this connection.";
       }
@@ -2163,7 +2159,6 @@ ${val.stack}`;
     setClipboardSyncAppearance();
     disconnect.addEventListener("click", () => {
       releaseRdpKeyCapture();
-      window.removeEventListener("focus", onWindowFocus);
       session?.shutdown();
       overlay.close();
     });
@@ -2189,6 +2184,8 @@ ${val.stack}`;
         }
       });
       builder.remoteClipboardChangedCallback(async (content) => {
+        const mimeTypes = Array.from(content?.items?.() || [], (item) => item.mimeType?.() || "unknown");
+        api.log(`RDP clipboard remote update received formats=${mimeTypes.join(",") || "none"} sync=${clipboardSyncEnabled}`);
         if (!clipboardSyncEnabled) return;
         const text = remotePlainText(content);
         if (text === null) {
@@ -2196,7 +2193,6 @@ ${val.stack}`;
           return;
         }
         if (!text) {
-          const mimeTypes = Array.from(content?.items?.() || [], (item) => item.mimeType?.() || "unknown");
           api.log(`RDP clipboard remote update contained no supported plain text formats=${mimeTypes.join(",") || "none"}`);
           return;
         }
@@ -2232,14 +2228,12 @@ ${val.stack}`;
       canvas.focus();
       session.run().finally(() => {
         releaseRdpKeyCapture();
-        window.removeEventListener("focus", onWindowFocus);
         clipboardSyncEnabled = false;
         setClipboardSyncAppearance();
         status.textContent = "RDP session ended.";
         session = null;
       });
     } catch (error) {
-      window.removeEventListener("focus", onWindowFocus);
       const detail = formatRdpError(error);
       status.textContent = `Connection failed: ${detail}`;
       api.log(`RDP prototype connection failed for ${target}: ${detail}`);

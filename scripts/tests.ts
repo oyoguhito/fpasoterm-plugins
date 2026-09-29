@@ -150,14 +150,15 @@ assert.match(rdpEntrySource, /event\.type === 'keyup'.*DeviceEvent\.keyReleased/
 assert.match(rdpEntrySource, /content\.addText\('text\/plain', text\)/);
 assert.match(rdpEntrySource, /const sendLocalClipboard = async \(text\) =>/);
 assert.match(rdpEntrySource, /sendLocalClipboard\(lastLocalClipboard\)/);
-assert.match(rdpEntrySource, /window\.addEventListener\('focus', onWindowFocus\)/);
-assert.match(rdpEntrySource, /window\.removeEventListener\('focus', onWindowFocus\)/);
+assert.match(rdpEntrySource, /clipboardPaste\.addEventListener\('paste'/);
+assert.match(rdpEntrySource, /event\.clipboardData\?\.getData\('text\/plain'\)/);
+assert.match(rdpEntrySource, /RDP clipboard remote update received formats=/);
+assert.doesNotMatch(rdpEntrySource, /api\.readClipboard\(\)/);
 assert.doesNotMatch(rdpEntrySource, /setInterval\(/);
-assert.match(rdpEntrySource, /remote-to-local remains enabled/);
 assert.match(rdpEntrySource, /remote update contained no supported plain text/);
 assert.doesNotMatch(rdpEntrySource, /disableClipboardSyncAfterReadFailure/);
 assert.match(rdpReadme, /WebView platforms deny programmatic clipboard reads/);
-assert.match(rdpReadme, /remote-to-local synchronization remains enabled/);
+assert.match(rdpReadme, /Remote-to-local synchronization\s+remains automatic/);
 assert.match(rdpEntrySource, /setupRdpInputHandlers\(canvas, session\)/);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),

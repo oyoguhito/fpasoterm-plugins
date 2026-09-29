@@ -90,20 +90,19 @@ failure status and do not persist credentials.
 
 After connection, select **Enable clipboard sync** to permit plain-text
 clipboard redirection for that RDP session. Incoming remote text is copied to
-fpasoterm's shared WebView/OS clipboard. Local text is checked when enabling
-synchronization and when focus returns from another application, announced as
-`text/plain`, and cached so the same value can be returned when IronRDP asks
-for it. Continuous polling is deliberately avoided so clipboard commands
-cannot interfere with remote input responsiveness. This setting
+fpasoterm's shared WebView/OS clipboard. For local-to-remote transfer, focus
+the **Local → RDP** field and press Ctrl+V. The resulting user-initiated paste
+event is announced as `text/plain` and cached so the same value can be returned
+when IronRDP asks for it. This avoids WebView programmatic-read restrictions
+and deliberately avoids polling that can interfere with remote input. This setting
 defaults to off for each connection, is cleared on disconnect, does not log or
 persist clipboard contents, and rejects HTML/files/binary formats and text over
 1 MiB. Verify with disposable text in both directions before relying on it.
 
-Some WebView platforms deny programmatic clipboard reads even after the button
-click. fpasoterm also tries its native OS clipboard backend. If both reads are
-unavailable, local-to-remote synchronization is skipped and a diagnostic is
-logged, but remote-to-local synchronization remains enabled. This is a
-platform clipboard restriction, not an RDP connection failure.
+Some WebView platforms deny programmatic clipboard reads even after a button
+click. The explicit Ctrl+V field obtains text from the browser paste event
+instead and does not require that permission. Remote-to-local synchronization
+remains automatic while synchronization is enabled.
 
 ## Interaction and cross-platform verification
 
