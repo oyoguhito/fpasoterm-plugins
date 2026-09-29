@@ -451,7 +451,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   try {
     // This exact target is declared in the installed plugin header. To connect
     // elsewhere, make a reviewed plugin with a matching target declaration.
-    const bridgeUrl = await api.openVncBridge({ target: 'tcp://127.0.0.1:59999' });
+    const bridgeUrl = await api.openVncBridge({ target: 'tcp://127.0.0.1:5999' });
     status.textContent = 'Connecting to the configured verification target through the local bridge…';
     const username = await api.promptText({
       title: 'VNC username',

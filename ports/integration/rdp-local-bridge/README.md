@@ -93,12 +93,12 @@ RDP session and stops when the overlay closes. Incoming remote text is copied to
 fpasoterm's shared WebView/OS clipboard. For local-to-remote transfer, focus the
 multi-line **Local → RDP** text area and press Ctrl+V. The resulting user-initiated paste event
 is announced as `text/plain`; then focus the RDP desktop and press Ctrl+V there.
-This two-step flow avoids WebView programmatic-read restrictions and prevents a
-partially forwarded shortcut from leaving remote modifier keys inconsistent.
-and deliberately avoids polling that can interfere with remote input. Clipboard
+This two-step flow avoids WebView programmatic-read restrictions, prevents a
+partially forwarded shortcut from leaving remote modifier keys inconsistent,
+and avoids polling that can interfere with remote input. Clipboard
 contents remain only in the connection-scoped UI and memory, are not logged or
-persisted, and HTML/files/binary formats and text over
-1 MiB. Verify with disposable text in both directions before relying on it.
+persisted, and ignore HTML/files/binary formats and text over 1 MiB. Verify with
+disposable text in both directions before relying on it.
 
 Some WebView platforms deny programmatic clipboard reads even after a button
 click. The explicit Ctrl+V field supplies text through the browser paste event

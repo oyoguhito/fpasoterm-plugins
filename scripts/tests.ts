@@ -11,6 +11,7 @@ assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-rdp-port.js'), 'u
 assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /novnc-local-bridge:configure -- tcp:\/\/host:port/);
 assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /Default after reset: \$\{defaultTarget\}/);
 assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /Currently configured target: \$\{target\}/);
+assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /const defaultTarget = 'tcp:\/\/127\.0\.0\.1:5999'/);
 const portsApi = require('./ports');
 const portsSource = fs.readFileSync(path.join(root, 'scripts', 'ports.ts'), 'utf8');
 assert.doesNotMatch(portsSource, /command === 'install'/);

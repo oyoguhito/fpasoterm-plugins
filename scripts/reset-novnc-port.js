@@ -6,7 +6,7 @@ const { build } = require('./build-novnc-port');
 
 const root = path.resolve(__dirname, '..');
 const entry = path.join(root, 'scripts', 'novnc-plugin-entry.js');
-const defaultTarget = 'tcp://127.0.0.1:59999';
+const defaultTarget = 'tcp://127.0.0.1:5999';
 const source = fs.readFileSync(entry, 'utf8');
 const targetPattern = /openVncBridge\(\{ target: '(?:tcp|tls):\/\/[^']+' \}\)/;
 if (!targetPattern.test(source)) {

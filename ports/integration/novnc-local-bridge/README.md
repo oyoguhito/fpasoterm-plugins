@@ -2,8 +2,8 @@
 
 This is a verification port for fpasoterm's local VNC bridge. It bundles
 noVNC 1.5.0 and can connect only to the exact target declared in its source:
-`tcp://127.0.0.1:59999`. This deliberately unused default avoids contacting an
-existing local VNC server during ordinary plugin development.
+`tcp://127.0.0.1:5999`. This loopback-only default uses VNC display `:99` and
+does not permit a connection to any other host or port.
 
 ## Prerequisite
 
@@ -25,8 +25,9 @@ together:
 npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
 ```
 
-For example, the normal VNC port is `5900`; use
-`tcp://127.0.0.1:5900` or another trusted private-network endpoint. Then,
+The default test endpoint is `tcp://127.0.0.1:5999` (VNC display `:99`). The
+usual VNC display `:0` port is `5900`; use that or another trusted
+private-network endpoint only when it matches the server configuration. Then,
 from a sibling fpasoterm checkout, install the local port and start a freshly
 rebuilt application:
 

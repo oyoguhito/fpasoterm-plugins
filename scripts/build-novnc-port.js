@@ -15,7 +15,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const entry = path.join(root, 'scripts', 'novnc-plugin-entry.js');
 const output = path.join(root, 'ports', 'integration', 'novnc-local-bridge', 'plugin.js');
-const defaultTarget = 'tcp://127.0.0.1:59999';
+const defaultTarget = 'tcp://127.0.0.1:5999';
 function usage(target = defaultTarget) {
   return `Usage:
   npm run port:integration:novnc-local-bridge:build

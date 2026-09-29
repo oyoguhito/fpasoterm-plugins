@@ -1,6 +1,6 @@
 // @fpasoterm-plugin version: 1.0.1
 // @fpasoterm-plugin description: Verification noVNC client for the strictly declared local TCP bridge.
-// @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:59999
+// @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:5999
 (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -17984,7 +17984,7 @@
     panCapture.addEventListener("pointerup", stopDragPan);
     panCapture.addEventListener("pointercancel", stopDragPan);
     try {
-      const bridgeUrl = await api.openVncBridge({ target: "tcp://127.0.0.1:59999" });
+      const bridgeUrl = await api.openVncBridge({ target: "tcp://127.0.0.1:5999" });
       status.textContent = "Connecting to the configured verification target through the local bridge\u2026";
       const username = await api.promptText({
         title: "VNC username",
