@@ -55,6 +55,14 @@ clipboard, so synchronization cannot starve VNC rendering or input. Clipboard
 content is never logged or persisted; empty text, HTML/files/binary formats,
 and text over 1 MiB are ignored.
 
+Clipboard transfer also requires support from the VNC server. If Plugin
+Activity reports `mode=legacy formats=none actions=none`, noVNC sent the
+standard legacy `ClientCutText` message because the server advertised no
+extended clipboard capability. A server that ignores legacy clipboard messages
+cannot provide clipboard sharing, and remote-to-local transfer produces no
+`noVNC clipboard remote event` entry. Enable clipboard transfer in that VNC
+server or use a server implementation that supports RFB clipboard messages.
+
 Verify both directions with disposable text: copy in the remote desktop and
 paste in a local editor, then copy in the local editor and paste remotely.
 

@@ -17615,6 +17615,7 @@
     let pausedSendMouse = null;
     let ctrlBPrefixUntil = 0;
     let suppressCtrlBPrefixKeyup = false;
+    const handledHostKeyEvents = /* @__PURE__ */ new WeakSet();
     const maxClipboardBytes = 1024 * 1024;
     let clipboardSyncEnabled = false;
     let lastRemoteClipboard = "";
@@ -17642,7 +17643,7 @@
       rfb.clipboardPasteFrom(text);
       clipboardPaste.value = text;
       const transport = clipboardTransport();
-      status.textContent = `Local clipboard sent to VNC (${transport.mode}). Click the desktop and press Ctrl+V.`;
+      status.textContent = transport.mode === "legacy" ? "Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and press Ctrl+V; server-side clipboard support may be required." : "Local clipboard sent to VNC (extended). Click the desktop and press Ctrl+V.";
       api.log(`noVNC clipboard local-to-remote announced bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(",") || "none"} actions=${transport.actions.join(",") || "none"}`);
     });
     const isClipboardPasteEvent = (event) => event.target === clipboardPaste;
@@ -17667,7 +17668,7 @@
       remote.absX = (x) => {
         const bounds2 = canvas.getBoundingClientRect();
         const width = Math.max(1, bounds2.width);
-        return Math.max(0, Math.min(remote.width - 1, Math.floor(x / width * canvas.width + remote._viewportLoc.x)));
+        return Math.max(0, Math.min(remote.width - 1, Math.floor(x / width * canvas.width + remote._viewportLoc.x + 8)));
       };
       remote.absY = (y) => {
         const bounds2 = canvas.getBoundingClientRect();
@@ -18106,6 +18107,7 @@
             return true;
           }
           if (/^Key[A-Z]$/.test(keyEvent.code)) {
+            handledHostKeyEvents.add(keyEvent);
             sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
             return true;
           }
@@ -18135,6 +18137,7 @@
         }
         const prefixHandler = (keyEvent) => {
           if (isClipboardPasteEvent(keyEvent)) return;
+          if (handledHostKeyEvents.has(keyEvent)) return;
           if (keyEvent.type === "keyup") {
             if (keyEvent.code === "ControlLeft" || keyEvent.code === "ControlRight" || capturedControlKeys.delete(keyEvent.code)) {
               keyEvent.preventDefault();
@@ -18189,6 +18192,7 @@
         };
         const ctrlHandler = (keyEvent) => {
           if (isClipboardPasteEvent(keyEvent)) return;
+          if (handledHostKeyEvents.has(keyEvent)) return;
           if (keyEvent.type !== "keydown" || !keyEvent.ctrlKey || keyEvent.shiftKey || !/^Key[A-Z]$/.test(keyEvent.code)) return;
           keyEvent.preventDefault();
           keyEvent.stopImmediatePropagation();
