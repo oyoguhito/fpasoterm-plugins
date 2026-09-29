@@ -15,7 +15,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const panUp = document.createElement('button');
   const panDown = document.createElement('button');
   const panRight = document.createElement('button');
-  const clipboardSync = document.createElement('button');
+  const clipboardPaste = document.createElement('textarea');
   const control = document.createElement('button');
   const alt = document.createElement('button');
   const shift = document.createElement('button');
@@ -42,7 +42,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   for (const [button, label] of [
     [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [overview, 'Overview'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
-    [clipboardSync, 'Enable clipboard sync'],
   ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
@@ -50,10 +49,15 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panLeft.title = 'Pan left'; panUp.title = 'Pan up';
   panDown.title = 'Pan down'; panRight.title = 'Pan right';
   overview.title = 'Show a clickable overview of the complete remote desktop';
-  clipboardSync.title = 'Share plain text clipboard with this remote desktop while this connection is open';
-  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, clipboardSync);
+  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight);
+  clipboardPaste.rows = 3;
+  clipboardPaste.placeholder = 'Local → VNC: click here, then press Ctrl+V';
+  clipboardPaste.title = 'Uses a user-initiated paste event when this WebView blocks clipboard reads';
+  clipboardPaste.spellcheck = false;
+  clipboardPaste.disabled = true;
+  clipboardPaste.style.cssText = 'box-sizing:border-box;flex:0 0 auto;width:100%;min-height:4.5em;resize:vertical';
   screen.append(panCapture, navigator);
-  overlay.element.replaceChildren(toolbar, screen);
+  overlay.element.replaceChildren(toolbar, screen, clipboardPaste);
   status.textContent = 'Waiting for connection confirmation…';
   let rfb;
   let connected = false;
@@ -70,61 +74,39 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let pausedSendMouse = null;
   let ctrlBPrefixUntil = 0;
   let suppressCtrlBPrefixKeyup = false;
-  // Clipboard text is never logged or persisted.  The explicit enable button
-  // prevents a remote connection from silently polling unrelated local data.
+  // Clipboard text is never logged or persisted. Local text is accepted only
+  // through this connection-scoped textarea's user-initiated paste event, so
+  // no clipboard polling competes with VNC rendering or remote input.
   const maxClipboardBytes = 1024 * 1024;
   let clipboardSyncEnabled = false;
-  let clipboardTimer = null;
-  let lastLocalClipboard = '';
   let lastRemoteClipboard = '';
   const clipboardText = (value) => {
     const text = String(value || '');
     return new TextEncoder().encode(text).byteLength <= maxClipboardBytes ? text : null;
   };
-  const setClipboardSyncAppearance = () => {
-    clipboardSync.textContent = clipboardSyncEnabled ? 'Disable clipboard sync' : 'Enable clipboard sync';
-    clipboardSync.style.background = clipboardSyncEnabled ? '#2d7d46' : '#263b4e';
-    clipboardSync.setAttribute('aria-pressed', String(clipboardSyncEnabled));
-  };
   const stopClipboardSync = () => {
     clipboardSyncEnabled = false;
-    if (clipboardTimer) window.clearInterval(clipboardTimer);
-    clipboardTimer = null;
-    setClipboardSyncAppearance();
+    clipboardPaste.disabled = true;
   };
-  const pushLocalClipboard = async () => {
+  clipboardPaste.addEventListener('paste', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
     if (!clipboardSyncEnabled || !connected || !rfb) return;
-    try {
-      const text = clipboardText(await api.readClipboard());
-      if (text === null) {
-        api.log('noVNC clipboard sync skipped local text over 1048576 bytes');
-        return;
-      }
-      if (!text || text === lastLocalClipboard || text === lastRemoteClipboard) return;
-      rfb.clipboardPasteFrom(text);
-      lastLocalClipboard = text;
-      api.log(`noVNC clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
-    } catch (error) {
-      api.log(`noVNC clipboard local read skipped: ${error}`);
-    }
-  };
-  clipboardSync.addEventListener('click', async () => {
-    if (!connected || !rfb) {
-      status.textContent = 'Connect before enabling clipboard sync.';
+    const text = clipboardText(event.clipboardData?.getData('text/plain') || '');
+    if (text === null) {
+      api.log('noVNC clipboard local-to-remote skipped text over 1048576 bytes');
       return;
     }
-    if (clipboardSyncEnabled) {
-      stopClipboardSync();
-      status.textContent = 'Clipboard sync disabled for this connection.';
+    if (!text) {
+      api.log('noVNC clipboard paste event contained no plain text');
       return;
     }
-    clipboardSyncEnabled = true;
-    setClipboardSyncAppearance();
-    status.textContent = 'Clipboard sync enabled (plain text, this connection only).';
-    await pushLocalClipboard();
-    clipboardTimer = window.setInterval(() => { pushLocalClipboard(); }, 1000);
+    rfb.clipboardPasteFrom(text);
+    clipboardPaste.value = text;
+    status.textContent = 'Local clipboard sent to VNC. Click the desktop and press Ctrl+V.';
+    api.log(`noVNC clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
   });
-  setClipboardSyncAppearance();
+  const isClipboardPasteEvent = (event) => event.target === clipboardPaste;
   const heldModifiers = new Map();
   const setToggleAppearance = (button, enabled) => {
     button.setAttribute('aria-pressed', String(enabled));
@@ -451,7 +433,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   try {
     // This exact target is declared in the installed plugin header. To connect
     // elsewhere, make a reviewed plugin with a matching target declaration.
-    const bridgeUrl = await api.openVncBridge({ target: 'tcp://127.0.0.1:5999' });
+    const bridgeUrl = await api.openVncBridge({ target: 'tcp://127.0.0.1:5900' });
     status.textContent = 'Connecting to the configured verification target through the local bridge…';
     const username = await api.promptText({
       title: 'VNC username',
@@ -471,6 +453,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     reportFramebuffer('RFB created');
     rfb.addEventListener('connect', (event) => {
       connected = true;
+      clipboardSyncEnabled = true;
+      clipboardPaste.disabled = false;
       api.dismissPrompts();
       status.textContent = `Connected: ${event.detail?.name || 'VNC server'}; waiting for remote framebuffer…`;
       // RFB's keyboard listener is attached to its canvas, not the element
@@ -482,6 +466,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       releaseHostKeyCapture();
       const capturedControlKeys = new Set();
       const handleHostCtrlKey = (keyEvent) => {
+        if (isClipboardPasteEvent(keyEvent)) return false;
         const isSuperShift = keyEvent.metaKey && keyEvent.shiftKey;
         if (isSuperShift && keyEvent.code === 'Space') {
           rfb.sendKey(Keysyms.XK_Super_L, 'MetaLeft', false);
@@ -604,6 +589,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         };
       }
       const prefixHandler = (keyEvent) => {
+        if (isClipboardPasteEvent(keyEvent)) return;
         // noVNC's browser keyboard synchronisation can consume a physical
         // Control press before the next key reaches the remote desktop.  Own
         // Ctrl+key chords here and send a complete press/release sequence.
@@ -652,6 +638,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         return;
       };
       const ctrlHandler = (keyEvent) => {
+        if (isClipboardPasteEvent(keyEvent)) return;
         if (keyEvent.type !== 'keydown' || !keyEvent.ctrlKey || keyEvent.shiftKey || !/^Key[A-Z]$/.test(keyEvent.code)) return;
         keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
         capturedControlKeys.add(keyEvent.code);
@@ -680,7 +667,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         rfb.scaleViewport = true;
         zoom = fittedScale();
         const details = reportFramebuffer('connected');
-        status.textContent = `Connected: ${event.detail?.name || 'VNC server'} (${details.framebuffer})`;
+        status.textContent = `Connected: ${event.detail?.name || 'VNC server'} (${details.framebuffer}) — clipboard sync is active.`;
       });
       window.setTimeout(() => {
         const details = reportFramebuffer('after connection');
@@ -700,7 +687,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       try {
         await api.writeClipboard(text);
         lastRemoteClipboard = text;
-        lastLocalClipboard = text;
+        status.textContent = 'Remote clipboard copied to the local clipboard.';
         api.log(`noVNC clipboard remote-to-local synced bytes=${new TextEncoder().encode(text).byteLength}`);
       } catch (error) {
         api.log(`noVNC clipboard remote write failed: ${error}`);

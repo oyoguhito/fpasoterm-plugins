@@ -2,7 +2,7 @@
 
 This is a verification port for fpasoterm's local VNC bridge. It bundles
 noVNC 1.5.0 and can connect only to the exact target declared in its source:
-`tcp://127.0.0.1:5999`. This loopback-only default uses VNC display `:99` and
+`tcp://127.0.0.1:5900`. This loopback-only default uses VNC display `:0` and
 does not permit a connection to any other host or port.
 
 ## Prerequisite
@@ -25,9 +25,9 @@ together:
 npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
 ```
 
-The default test endpoint is `tcp://127.0.0.1:5999` (VNC display `:99`). The
-usual VNC display `:0` port is `5900`; use that or another trusted
-private-network endpoint only when it matches the server configuration. Then,
+The default test endpoint is `tcp://127.0.0.1:5900` (VNC display `:0`). Use
+another trusted private-network endpoint only when it matches the server
+configuration. Then,
 from a sibling fpasoterm checkout, install the local port and start a freshly
 rebuilt application:
 
@@ -46,12 +46,14 @@ then password, before starting noVNC. The panel also provides **Zoom −**,
 
 ## Clipboard
 
-After the connection is established, select **Enable clipboard sync** to share
-plain text with that one VNC desktop. Remote-to-local changes are written to
-fpasoterm's shared WebView/OS clipboard; local-to-remote changes are checked
-once per second while the control remains enabled. The control defaults to off
-for every new connection, stops on disconnect, never logs or persists clipboard
-content, and ignores empty text, HTML/files/binary formats, and text over 1 MiB.
+Plain-text clipboard sharing is active only while that VNC connection is open.
+Remote-to-local changes are written to fpasoterm's shared WebView/OS clipboard.
+For local-to-remote transfer, focus the multi-line **Local → VNC** text area and
+press Ctrl+V, then focus the VNC desktop and press Ctrl+V there. This explicit
+paste flow avoids WebView clipboard-read restrictions and does not poll the
+clipboard, so synchronization cannot starve VNC rendering or input. Clipboard
+content is never logged or persisted; empty text, HTML/files/binary formats,
+and text over 1 MiB are ignored.
 
 Verify both directions with disposable text: copy in the remote desktop and
 paste in a local editor, then copy in the local editor and paste remotely.

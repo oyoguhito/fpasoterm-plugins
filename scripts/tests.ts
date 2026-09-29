@@ -11,7 +11,7 @@ assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-rdp-port.js'), 'u
 assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /novnc-local-bridge:configure -- tcp:\/\/host:port/);
 assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /Default after reset: \$\{defaultTarget\}/);
 assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /Currently configured target: \$\{target\}/);
-assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /const defaultTarget = 'tcp:\/\/127\.0\.0\.1:5999'/);
+assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-novnc-port.js'), 'utf8'), /const defaultTarget = 'tcp:\/\/127\.0\.0\.1:5900'/);
 const portsApi = require('./ports');
 const portsSource = fs.readFileSync(path.join(root, 'scripts', 'ports.ts'), 'utf8');
 assert.doesNotMatch(portsSource, /command === 'install'/);
@@ -124,6 +124,16 @@ const vncReadme = fs.readFileSync(
 assert.match(vncReadme, /exact configured target/);
 assert.match(vncReadme, /system trust store/);
 assert.match(vncReadme, /no insecure override/);
+const vncEntrySource = fs.readFileSync(path.join(root, 'scripts', 'novnc-plugin-entry.js'), 'utf8');
+assert.match(vncEntrySource, /document\.createElement\('textarea'\)/);
+assert.match(vncEntrySource, /clipboardPaste\.rows = 3/);
+assert.match(vncEntrySource, /clipboardPaste\.addEventListener\('paste'/);
+assert.match(vncEntrySource, /event\.clipboardData\?\.getData\('text\/plain'\)/);
+assert.match(vncEntrySource, /clipboardSyncEnabled = true;\s*clipboardPaste\.disabled = false/);
+assert.match(vncEntrySource, /isClipboardPasteEvent\(keyEvent\)/);
+assert.doesNotMatch(vncEntrySource, /Enable clipboard sync/);
+assert.doesNotMatch(vncEntrySource, /api\.readClipboard\(\)/);
+assert.doesNotMatch(vncEntrySource, /setInterval\(/);
 const rdpReadme = fs.readFileSync(
   path.join(root, 'ports', 'integration', 'rdp-local-bridge', 'README.md'),
   'utf8',
