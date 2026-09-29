@@ -133,7 +133,7 @@ assert.match(vncEntrySource, /clipboardSyncEnabled = true;\s*clipboardPaste\.dis
 assert.match(vncEntrySource, /isClipboardPasteEvent\(keyEvent\)/);
 assert.match(vncEntrySource, /const normalizePointerCoordinates = \(\) =>/);
 assert.match(vncEntrySource, /\(x \/ width\) \* canvas\.width/);
-assert.match(vncEntrySource, /remote\._viewportLoc\.x \+ 8/);
+assert.match(vncEntrySource, /remote\._viewportLoc\.x \+ 16/);
 assert.match(vncEntrySource, /\(y \/ height\) \* canvas\.height/);
 assert.match(vncEntrySource, /const handledHostKeyEvents = new WeakSet\(\)/);
 assert.match(vncEntrySource, /handledHostKeyEvents\.has\(keyEvent\)/);

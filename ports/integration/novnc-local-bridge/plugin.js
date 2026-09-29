@@ -17668,7 +17668,7 @@
       remote.absX = (x) => {
         const bounds2 = canvas.getBoundingClientRect();
         const width = Math.max(1, bounds2.width);
-        return Math.max(0, Math.min(remote.width - 1, Math.floor(x / width * canvas.width + remote._viewportLoc.x + 8)));
+        return Math.max(0, Math.min(remote.width - 1, Math.floor(x / width * canvas.width + remote._viewportLoc.x + 16)));
       };
       remote.absY = (y) => {
         const bounds2 = canvas.getBoundingClientRect();

@@ -63,6 +63,15 @@ cannot provide clipboard sharing, and remote-to-local transfer produces no
 `noVNC clipboard remote event` entry. Enable clipboard transfer in that VNC
 server or use a server implementation that supports RFB clipboard messages.
 
+Apple's **Edit > Use Shared Clipboard** option belongs to Apple's Screen
+Sharing client and applies when one Mac uses that app to control another Mac.
+It is not a server-side switch exposed to a third-party VNC client such as
+noVNC. For third-party access, macOS Sharing settings provide **VNC viewers may
+control screen with password**, but Apple does not document that option as
+enabling standard RFB clipboard messages. Consequently, a macOS server that
+reports no clipboard capability and emits no `ServerCutText` cannot be made to
+share its clipboard by changing this plugin alone.
+
 Verify both directions with disposable text: copy in the remote desktop and
 paste in a local editor, then copy in the local editor and paste remotely.
 
