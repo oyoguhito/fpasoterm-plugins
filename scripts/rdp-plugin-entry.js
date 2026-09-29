@@ -193,22 +193,16 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   root.style.cssText = 'display:flex;flex-direction:column;gap:8px;height:100%;box-sizing:border-box;padding:10px;background:#15171c;color:#eee';
   const status = document.createElement('div'); status.textContent = `Connecting to ${target}…`;
   const canvas = document.createElement('canvas'); canvas.tabIndex = 0; canvas.style.cssText = 'width:100%;flex:1;min-height:0;background:#000;outline:none;object-fit:contain';
-  const clipboardSync = document.createElement('button'); clipboardSync.type = 'button'; clipboardSync.textContent = 'Enable clipboard sync';
-  clipboardSync.title = 'Share plain text clipboard with this remote desktop while this connection is open';
-  const clipboardPaste = document.createElement('input'); clipboardPaste.type = 'text';
+  const clipboardPaste = document.createElement('textarea'); clipboardPaste.rows = 3;
   clipboardPaste.placeholder = 'Local → RDP: click here, then press Ctrl+V';
   clipboardPaste.title = 'Uses a user-initiated paste event when this WebView blocks clipboard reads';
+  clipboardPaste.spellcheck = false;
+  clipboardPaste.style.cssText = 'box-sizing:border-box;width:100%;min-height:4.5em;resize:vertical';
   clipboardPaste.disabled = true;
-  root.append(status, canvas, clipboardSync, clipboardPaste);
+  root.append(status, canvas, clipboardPaste);
   let clipboardSyncEnabled = false;
   let lastLocalClipboard = '';
   let lastRemoteClipboard = '';
-  const setClipboardSyncAppearance = () => {
-    clipboardSync.textContent = clipboardSyncEnabled ? 'Disable clipboard sync' : 'Enable clipboard sync';
-    clipboardSync.style.background = clipboardSyncEnabled ? '#2d7d46' : '';
-    clipboardSync.setAttribute('aria-pressed', String(clipboardSyncEnabled));
-    clipboardPaste.disabled = !clipboardSyncEnabled;
-  };
   const sendLocalClipboard = async (text, logSuccess = true) => {
     if (!clipboardSyncEnabled || !session || !text) return;
     const content = new ClipboardData();
@@ -239,31 +233,12 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     try {
       await sendLocalClipboard(text);
       lastLocalClipboard = text;
+      clipboardPaste.value = text;
       status.textContent = 'Local clipboard sent to RDP. Click the desktop and press Ctrl+V.';
-      canvas.focus();
     } catch (error) {
       api.log(`RDP clipboard local announce failed: ${error}`);
     }
   });
-  clipboardSync.addEventListener('click', () => {
-    if (!session) {
-      status.textContent = 'Connect before enabling clipboard sync.';
-      return;
-    }
-    clipboardSyncEnabled = !clipboardSyncEnabled;
-    // Changing focus between the remote canvas and local clipboard controls can
-    // prevent a browser keyup from reaching the canvas. Clear remote modifier
-    // state before entering or leaving clipboard mode.
-    session.releaseAllInputs();
-    setClipboardSyncAppearance();
-    if (clipboardSyncEnabled) {
-      status.textContent = 'Clipboard sync enabled. For local → RDP, use the Ctrl+V field below.';
-      clipboardPaste.focus();
-    } else {
-      status.textContent = 'Clipboard sync disabled for this connection.';
-    }
-  });
-  setClipboardSyncAppearance();
   try {
     const proxyAddress = await api.openRdpBridge({ target });
     await init(wasmBytes()); setup('warn');
@@ -306,6 +281,8 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     builder.setCursorStyleCallbackContext(canvas);
     builder.setCursorStyleCallback((style) => { canvas.style.cursor = style || 'default'; });
     session = await builder.connect();
+    clipboardSyncEnabled = true;
+    clipboardPaste.disabled = false;
     const desktop = session.desktopSize(); canvas.width = desktop.width; canvas.height = desktop.height;
     setupRdpInputHandlers(canvas, session, {
       clipboardSyncEnabled: () => clipboardSyncEnabled,
@@ -323,8 +300,8 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
       if (event.type === 'keyup') applyInput(session, DeviceEvent.keyReleased(scancode));
       return true;
     }) || (() => {});
-    status.textContent = `Connected: ${desktop.width} × ${desktop.height} — click the desktop to control it.`; canvas.focus();
-    session.run().finally(() => { releaseRdpKeyCapture(); clipboardSyncEnabled = false; setClipboardSyncAppearance(); status.textContent = 'RDP session ended.'; session = null; });
+    status.textContent = `Connected: ${desktop.width} × ${desktop.height} — clipboard sync is active.`; canvas.focus();
+    session.run().finally(() => { releaseRdpKeyCapture(); clipboardSyncEnabled = false; clipboardPaste.disabled = true; status.textContent = 'RDP session ended.'; session = null; });
   } catch (error) {
     const detail = formatRdpError(error);
     status.textContent = `Connection failed: ${detail}`;

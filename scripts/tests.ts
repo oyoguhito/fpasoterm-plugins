@@ -155,12 +155,17 @@ assert.match(rdpEntrySource, /event\.type === 'keyup'.*DeviceEvent\.keyReleased/
 assert.match(rdpEntrySource, /content\.addText\('text\/plain', text\)/);
 assert.match(rdpEntrySource, /const sendLocalClipboard = async \(text, logSuccess = true\) =>/);
 assert.match(rdpEntrySource, /clipboardPaste\.addEventListener\('paste'/);
+assert.match(rdpEntrySource, /document\.createElement\('textarea'\)/);
+assert.match(rdpEntrySource, /clipboardPaste\.rows = 3/);
+assert.match(rdpEntrySource, /clipboardPaste\.value = text/);
 assert.match(rdpEntrySource, /event\.clipboardData\?\.getData\('text\/plain'\)/);
 assert.match(rdpEntrySource, /Local clipboard sent to RDP\. Click the desktop and press Ctrl\+V/);
 assert.match(rdpEntrySource, /Remote clipboard copied to the local clipboard/);
 assert.doesNotMatch(rdpEntrySource, /clipboardShortcut.*event\.code === 'KeyV'/);
 assert.doesNotMatch(rdpEntrySource, /function applyInputs/);
-assert.match(rdpEntrySource, /clipboardSyncEnabled = !clipboardSyncEnabled;[\s\S]*session\.releaseAllInputs\(\)/);
+assert.doesNotMatch(rdpEntrySource, /Enable clipboard sync/);
+assert.doesNotMatch(rdpEntrySource, /clipboardSync\.addEventListener/);
+assert.match(rdpEntrySource, /session = await builder\.connect\(\);\s*clipboardSyncEnabled = true/);
 assert.doesNotMatch(rdpEntrySource, /RDP clipboard remote update received formats=/);
 assert.match(rdpEntrySource, /sendLocalClipboard\(lastLocalClipboard, false\)/);
 assert.doesNotMatch(rdpEntrySource, /lastRemoteClipboard = text;\s*lastLocalClipboard = text/);
