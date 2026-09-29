@@ -67,6 +67,8 @@ type FpasotermPluginApi = {
     title?: string;
     width?: number;
     height?: number;
+    /** Called exactly once before the overlay is removed by any close path. */
+    onClose?: () => void;
   }) => {
     element: HTMLDivElement;
     close: () => void;

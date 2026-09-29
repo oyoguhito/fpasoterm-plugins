@@ -194,27 +194,29 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   const password = await api.promptSecret({ title: 'RDP password', message: 'Held only for this connection.', approve: 'Connect' });
   if (password === null) return;
 
-  const overlay = api.openElementOverlay({ title: 'RDP local bridge (prototype)', width: 1280, height: 820 });
+  let session = null;
+  let releaseRdpKeyCapture = () => {};
+  const overlay = api.openElementOverlay({
+    title: 'RDP local bridge (prototype)', width: 1280, height: 820,
+    onClose: () => { releaseRdpKeyCapture(); session?.shutdown(); },
+  });
   const root = overlay.element;
   root.replaceChildren();
   root.style.cssText = 'display:flex;flex-direction:column;gap:8px;height:100%;box-sizing:border-box;padding:10px;background:#15171c;color:#eee';
   const status = document.createElement('div'); status.textContent = `Connecting to ${target}…`;
   const canvas = document.createElement('canvas'); canvas.tabIndex = 0; canvas.style.cssText = 'width:100%;flex:1;min-height:0;background:#000;outline:none;object-fit:contain';
-  const disconnect = document.createElement('button'); disconnect.type = 'button'; disconnect.textContent = 'Disconnect';
   const clipboardSync = document.createElement('button'); clipboardSync.type = 'button'; clipboardSync.textContent = 'Enable clipboard sync';
   clipboardSync.title = 'Share plain text clipboard with this remote desktop while this connection is open';
-  root.append(status, canvas, clipboardSync, disconnect);
-  let session = null;
+  root.append(status, canvas, clipboardSync);
   let clipboardSyncEnabled = false;
   let lastLocalClipboard = '';
   let lastRemoteClipboard = '';
-  let releaseRdpKeyCapture = () => {};
   const setClipboardSyncAppearance = () => {
     clipboardSync.textContent = clipboardSyncEnabled ? 'Disable clipboard sync' : 'Enable clipboard sync';
     clipboardSync.style.background = clipboardSyncEnabled ? '#2d7d46' : '';
     clipboardSync.setAttribute('aria-pressed', String(clipboardSyncEnabled));
   };
-  const sendLocalClipboard = async (text) => {
+  const sendLocalClipboard = async (text, logSuccess = true) => {
     if (!clipboardSyncEnabled || !session || !text) return;
     const content = new ClipboardData();
     try {
@@ -223,7 +225,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
       // with no format it recognises and therefore no data request.
       content.addText('text/plain', text);
       await session.onClipboardPaste(content);
-      api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
+      if (logSuccess) api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
     } finally {
       content.free?.();
     }
@@ -273,7 +275,6 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     }
   });
   setClipboardSyncAppearance();
-  disconnect.addEventListener('click', () => { releaseRdpKeyCapture(); session?.shutdown(); overlay.close(); });
   try {
     const proxyAddress = await api.openRdpBridge({ target });
     await init(wasmBytes()); setup('warn');
@@ -286,12 +287,11 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     builder.forceClipboardUpdateCallback(async () => {
       // CLIPRDR is announce-then-request. Re-send the last value already
       // announced instead of attempting a new WebView read while RDP has focus.
-      try { await sendLocalClipboard(lastLocalClipboard); }
+      try { await sendLocalClipboard(lastLocalClipboard, false); }
       catch (error) { api.log(`RDP clipboard cached update failed: ${error}`); }
     });
     builder.remoteClipboardChangedCallback(async (content) => {
       const mimeTypes = Array.from(content?.items?.() || [], (item) => item.mimeType?.() || 'unknown');
-      api.log(`RDP clipboard remote update received formats=${mimeTypes.join(',') || 'none'} sync=${clipboardSyncEnabled}`);
       if (!clipboardSyncEnabled) return;
       const text = remotePlainText(content);
       if (text === null) {
@@ -306,7 +306,6 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
       try {
         await api.writeClipboard(text);
         lastRemoteClipboard = text;
-        lastLocalClipboard = text;
         status.textContent = 'Remote clipboard copied to the local clipboard.';
         api.log(`RDP clipboard remote-to-local synced bytes=${new TextEncoder().encode(text).byteLength}`);
       } catch (error) {
@@ -325,7 +324,8 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     });
     // `openElementOverlay` normally interprets Escape as Close. Claim Escape
     // before that host handler and forward both its press and release to RDP.
-    // The explicit Disconnect/Close controls remain the only close actions.
+    // The host Close control is the only close action and invokes onClose,
+    // which shuts down the RDP session before removing the overlay.
     releaseRdpKeyCapture = overlay.captureKeys?.((event) => {
       if (event.code !== 'Escape' && event.key !== 'Escape') return false;
       const scancode = SCANCODE_MAP[event.code];

@@ -127,8 +127,8 @@ server in the pull-request test notes and perform the following checks:
    a window in both directions.
 3. Type ASCII text, then test Backspace, Enter, arrow keys, and a modifier
    shortcut appropriate for a disposable remote test account.
-4. Disconnect from the RDP overlay, close it, and confirm that fpasoterm input
-   and shortcuts still work normally.
+4. Close the RDP overlay and confirm that its session is shut down and fpasoterm
+   input and shortcuts still work normally.
 
 The current prototype maps common browser keys to PS/2 Set 1 scancodes for
 IronRDP. Non-US layouts, IME composition, touch input, clipboard formats other

@@ -2103,7 +2103,18 @@ ${val.stack}`;
     if (domain === null) return;
     const password = await api.promptSecret({ title: "RDP password", message: "Held only for this connection.", approve: "Connect" });
     if (password === null) return;
-    const overlay = api.openElementOverlay({ title: "RDP local bridge (prototype)", width: 1280, height: 820 });
+    let session = null;
+    let releaseRdpKeyCapture = () => {
+    };
+    const overlay = api.openElementOverlay({
+      title: "RDP local bridge (prototype)",
+      width: 1280,
+      height: 820,
+      onClose: () => {
+        releaseRdpKeyCapture();
+        session?.shutdown();
+      }
+    });
     const root = overlay.element;
     root.replaceChildren();
     root.style.cssText = "display:flex;flex-direction:column;gap:8px;height:100%;box-sizing:border-box;padding:10px;background:#15171c;color:#eee";
@@ -2112,32 +2123,26 @@ ${val.stack}`;
     const canvas = document.createElement("canvas");
     canvas.tabIndex = 0;
     canvas.style.cssText = "width:100%;flex:1;min-height:0;background:#000;outline:none;object-fit:contain";
-    const disconnect = document.createElement("button");
-    disconnect.type = "button";
-    disconnect.textContent = "Disconnect";
     const clipboardSync = document.createElement("button");
     clipboardSync.type = "button";
     clipboardSync.textContent = "Enable clipboard sync";
     clipboardSync.title = "Share plain text clipboard with this remote desktop while this connection is open";
-    root.append(status, canvas, clipboardSync, disconnect);
-    let session = null;
+    root.append(status, canvas, clipboardSync);
     let clipboardSyncEnabled = false;
     let lastLocalClipboard = "";
     let lastRemoteClipboard = "";
-    let releaseRdpKeyCapture = () => {
-    };
     const setClipboardSyncAppearance = () => {
       clipboardSync.textContent = clipboardSyncEnabled ? "Disable clipboard sync" : "Enable clipboard sync";
       clipboardSync.style.background = clipboardSyncEnabled ? "#2d7d46" : "";
       clipboardSync.setAttribute("aria-pressed", String(clipboardSyncEnabled));
     };
-    const sendLocalClipboard = async (text) => {
+    const sendLocalClipboard = async (text, logSuccess = true) => {
       if (!clipboardSyncEnabled || !session || !text) return;
       const content = new ClipboardData();
       try {
         content.addText("text/plain", text);
         await session.onClipboardPaste(content);
-        api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
+        if (logSuccess) api.log(`RDP clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
       } finally {
         content.free?.();
       }
@@ -2185,11 +2190,6 @@ ${val.stack}`;
       }
     });
     setClipboardSyncAppearance();
-    disconnect.addEventListener("click", () => {
-      releaseRdpKeyCapture();
-      session?.shutdown();
-      overlay.close();
-    });
     try {
       const proxyAddress = await api.openRdpBridge({ target });
       await __wbg_init(wasmBytes());
@@ -2206,14 +2206,13 @@ ${val.stack}`;
       builder.extension(new Extension("enable_credssp", true));
       builder.forceClipboardUpdateCallback(async () => {
         try {
-          await sendLocalClipboard(lastLocalClipboard);
+          await sendLocalClipboard(lastLocalClipboard, false);
         } catch (error) {
           api.log(`RDP clipboard cached update failed: ${error}`);
         }
       });
       builder.remoteClipboardChangedCallback(async (content) => {
         const mimeTypes = Array.from(content?.items?.() || [], (item) => item.mimeType?.() || "unknown");
-        api.log(`RDP clipboard remote update received formats=${mimeTypes.join(",") || "none"} sync=${clipboardSyncEnabled}`);
         if (!clipboardSyncEnabled) return;
         const text = remotePlainText(content);
         if (text === null) {
@@ -2228,7 +2227,6 @@ ${val.stack}`;
         try {
           await api.writeClipboard(text);
           lastRemoteClipboard = text;
-          lastLocalClipboard = text;
           status.textContent = "Remote clipboard copied to the local clipboard.";
           api.log(`RDP clipboard remote-to-local synced bytes=${new TextEncoder().encode(text).byteLength}`);
         } catch (error) {
