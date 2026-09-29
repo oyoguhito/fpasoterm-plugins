@@ -141,7 +141,7 @@ assert.match(rdpEntrySource, /DeviceEvent, Extension, InputTransaction/);
 assert.match(rdpEntrySource, /function rdpPointerCoordinates\(canvas, event\)/);
 assert.match(rdpEntrySource, /const scale = Math\.min\(rect\.width \/ canvas\.width, rect\.height \/ canvas\.height\)/);
 assert.match(rdpEntrySource, /renderedWidth/);
-assert.match(rdpEntrySource, /function setupRdpInputHandlers\(canvas, session\)/);
+assert.match(rdpEntrySource, /function setupRdpInputHandlers\(canvas, session, options = \{\}\)/);
 assert.match(rdpEntrySource, /DeviceEvent\.mouseButtonPressed/);
 assert.match(rdpEntrySource, /requestAnimationFrame\(flushPointerMove\)/);
 assert.match(rdpEntrySource, /cancelAnimationFrame\(pointerFrame\)/);
@@ -155,8 +155,12 @@ assert.match(rdpEntrySource, /event\.type === 'keyup'.*DeviceEvent\.keyReleased/
 assert.match(rdpEntrySource, /content\.addText\('text\/plain', text\)/);
 assert.match(rdpEntrySource, /const sendLocalClipboard = async \(text\) =>/);
 assert.match(rdpEntrySource, /sendLocalClipboard\(lastLocalClipboard\)/);
-assert.match(rdpEntrySource, /clipboardPaste\.addEventListener\('paste'/);
+assert.match(rdpEntrySource, /root\.addEventListener\('paste'/);
 assert.match(rdpEntrySource, /event\.clipboardData\?\.getData\('text\/plain'\)/);
+assert.match(rdpEntrySource, /Local clipboard sent and pasted into RDP/);
+assert.match(rdpEntrySource, /Remote clipboard copied to the local clipboard/);
+assert.match(rdpEntrySource, /clipboardShortcut.*event\.code === 'KeyV'/);
+assert.doesNotMatch(rdpEntrySource, /clipboardPaste/);
 assert.match(rdpEntrySource, /RDP clipboard remote update received formats=/);
 assert.doesNotMatch(rdpEntrySource, /api\.readClipboard\(\)/);
 assert.doesNotMatch(rdpEntrySource, /setInterval\(/);
@@ -164,7 +168,7 @@ assert.match(rdpEntrySource, /remote update contained no supported plain text/);
 assert.doesNotMatch(rdpEntrySource, /disableClipboardSyncAfterReadFailure/);
 assert.match(rdpReadme, /WebView platforms deny programmatic clipboard reads/);
 assert.match(rdpReadme, /Remote-to-local synchronization\s+remains automatic/);
-assert.match(rdpEntrySource, /setupRdpInputHandlers\(canvas, session\)/);
+assert.match(rdpEntrySource, /setupRdpInputHandlers\(canvas, session, \{/);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),
   'utf8',
