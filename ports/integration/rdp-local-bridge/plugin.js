@@ -2013,6 +2013,14 @@ ${val.stack}`;
     };
   }
   function setupRdpInputHandlers(canvas, session) {
+    let pendingPointerMove = null;
+    let pointerFrame = 0;
+    const flushPointerMove = () => {
+      pointerFrame = 0;
+      const coordinates = pendingPointerMove;
+      pendingPointerMove = null;
+      if (coordinates) applyInput(session, DeviceEvent.mouseMove(coordinates.x, coordinates.y));
+    };
     canvas.addEventListener("keydown", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -2027,13 +2035,18 @@ ${val.stack}`;
     });
     canvas.addEventListener("mousemove", (event) => {
       const coordinates = rdpPointerCoordinates(canvas, event);
-      if (coordinates) applyInput(session, DeviceEvent.mouseMove(coordinates.x, coordinates.y));
+      if (!coordinates) return;
+      pendingPointerMove = coordinates;
+      if (!pointerFrame) pointerFrame = requestAnimationFrame(flushPointerMove);
     });
     canvas.addEventListener("mousedown", (event) => {
       event.preventDefault();
       event.stopPropagation();
       canvas.focus();
       const coordinates = rdpPointerCoordinates(canvas, event);
+      if (pointerFrame) cancelAnimationFrame(pointerFrame);
+      pointerFrame = 0;
+      pendingPointerMove = null;
       if (coordinates) applyInput(session, DeviceEvent.mouseMove(coordinates.x, coordinates.y));
       applyInput(session, DeviceEvent.mouseButtonPressed(event.button));
     });

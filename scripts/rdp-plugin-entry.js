@@ -96,6 +96,14 @@ function rdpPointerCoordinates(canvas, event) {
 }
 
 function setupRdpInputHandlers(canvas, session) {
+  let pendingPointerMove = null;
+  let pointerFrame = 0;
+  const flushPointerMove = () => {
+    pointerFrame = 0;
+    const coordinates = pendingPointerMove;
+    pendingPointerMove = null;
+    if (coordinates) applyInput(session, DeviceEvent.mouseMove(coordinates.x, coordinates.y));
+  };
   canvas.addEventListener('keydown', (event) => {
     event.preventDefault(); event.stopPropagation();
     const scancode = SCANCODE_MAP[event.code];
@@ -108,11 +116,20 @@ function setupRdpInputHandlers(canvas, session) {
   });
   canvas.addEventListener('mousemove', (event) => {
     const coordinates = rdpPointerCoordinates(canvas, event);
-    if (coordinates) applyInput(session, DeviceEvent.mouseMove(coordinates.x, coordinates.y));
+    if (!coordinates) return;
+    // High-DPI pointing devices can emit hundreds of events per second. Each
+    // applyInputs call crosses the JS/Wasm boundary and creates an RDP input
+    // transaction, which can starve canvas painting. Keep only the newest
+    // position and send at most one move per rendered browser frame.
+    pendingPointerMove = coordinates;
+    if (!pointerFrame) pointerFrame = requestAnimationFrame(flushPointerMove);
   });
   canvas.addEventListener('mousedown', (event) => {
     event.preventDefault(); event.stopPropagation(); canvas.focus();
     const coordinates = rdpPointerCoordinates(canvas, event);
+    if (pointerFrame) cancelAnimationFrame(pointerFrame);
+    pointerFrame = 0;
+    pendingPointerMove = null;
     if (coordinates) applyInput(session, DeviceEvent.mouseMove(coordinates.x, coordinates.y));
     applyInput(session, DeviceEvent.mouseButtonPressed(event.button));
   });

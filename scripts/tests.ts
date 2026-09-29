@@ -143,6 +143,8 @@ assert.match(rdpEntrySource, /const scale = Math\.min\(rect\.width \/ canvas\.wi
 assert.match(rdpEntrySource, /renderedWidth/);
 assert.match(rdpEntrySource, /function setupRdpInputHandlers\(canvas, session\)/);
 assert.match(rdpEntrySource, /DeviceEvent\.mouseButtonPressed/);
+assert.match(rdpEntrySource, /requestAnimationFrame\(flushPointerMove\)/);
+assert.match(rdpEntrySource, /cancelAnimationFrame\(pointerFrame\)/);
 assert.match(rdpEntrySource, /DeviceEvent\.keyPressed/);
 assert.match(rdpEntrySource, /overlay\.captureKeys\?\.\(\(event\) =>/);
 assert.match(rdpEntrySource, /event\.code !== 'Escape' && event\.key !== 'Escape'/);
