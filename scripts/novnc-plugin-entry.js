@@ -103,8 +103,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     }
     rfb.clipboardPasteFrom(text);
     clipboardPaste.value = text;
-    status.textContent = 'Local clipboard sent to VNC. Click the desktop and press Ctrl+V.';
-    api.log(`noVNC clipboard local-to-remote synced bytes=${new TextEncoder().encode(text).byteLength}`);
+    const transport = clipboardTransport();
+    status.textContent = `Local clipboard sent to VNC (${transport.mode}). Click the desktop and press Ctrl+V.`;
+    api.log(`noVNC clipboard local-to-remote announced bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(',') || 'none'} actions=${transport.actions.join(',') || 'none'}`);
   });
   const isClipboardPasteEvent = (event) => event.target === clipboardPaste;
   const heldModifiers = new Map();
@@ -114,6 +115,33 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   };
   const display = () => rfb?._display;
   const viewport = () => display()?._viewportLoc;
+  const clipboardTransport = () => {
+    const formats = Object.keys(rfb?._clipboardServerCapabilitiesFormats || {});
+    const actions = Object.keys(rfb?._clipboardServerCapabilitiesActions || {}).filter(
+      (key) => rfb._clipboardServerCapabilitiesActions[key],
+    );
+    return { mode: formats.length && actions.length ? 'extended' : 'legacy', formats, actions };
+  };
+  const normalizePointerCoordinates = () => {
+    const remote = display();
+    const canvas = rfb?._canvas;
+    if (!remote || !canvas) return;
+    // WebView layout can round or constrain the CSS canvas independently of
+    // Display.scale. Normalize through the measured canvas rectangle so the
+    // remote pointer stays aligned in Fit and manual zoom modes.
+    remote.absX = (x) => {
+      const bounds = canvas.getBoundingClientRect();
+      const width = Math.max(1, bounds.width);
+      return Math.max(0, Math.min(remote.width - 1, Math.floor((x / width) * canvas.width + remote._viewportLoc.x)));
+    };
+    remote.absY = (y) => {
+      const bounds = canvas.getBoundingClientRect();
+      const height = Math.max(1, bounds.height);
+      return Math.max(0, Math.min(remote.height - 1, Math.floor((y / height) * canvas.height + remote._viewportLoc.y)));
+    };
+    const bounds = canvas.getBoundingClientRect();
+    api.log(`noVNC pointer mapping normalized css=${Math.round(bounds.width)}x${Math.round(bounds.height)} pixels=${canvas.width}x${canvas.height} scale=${remote.scale}`);
+  };
   const fittedScale = () => {
     const remote = display();
     if (!remote?.width || !remote?.height) return 1;
@@ -666,6 +694,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       requestAnimationFrame(() => {
         rfb.scaleViewport = true;
         zoom = fittedScale();
+        normalizePointerCoordinates();
         const details = reportFramebuffer('connected');
         status.textContent = `Connected: ${event.detail?.name || 'VNC server'} (${details.framebuffer}) — clipboard sync is active.`;
       });
@@ -683,6 +712,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         api.log('noVNC clipboard remote-to-local skipped text over 1048576 bytes');
         return;
       }
+      api.log(`noVNC clipboard remote event bytes=${new TextEncoder().encode(text || '').byteLength}`);
       if (!text || text === lastRemoteClipboard) return;
       try {
         await api.writeClipboard(text);
