@@ -79,12 +79,6 @@ function applyInput(session, event) {
   session.applyInputs(transaction);
 }
 
-function applyInputs(session, events) {
-  const transaction = new InputTransaction();
-  for (const event of events) transaction.addEvent(event);
-  session.applyInputs(transaction);
-}
-
 // object-fit: contain can place letterbox space inside the canvas element.
 // Translate browser coordinates from the rendered remote-desktop rectangle,
 // rather than the wider element rectangle, before sending RDP coordinates.
@@ -114,12 +108,6 @@ function setupRdpInputHandlers(canvas, session, options = {}) {
   };
   canvas.addEventListener('keydown', (event) => {
     const clipboardShortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
-    if (clipboardShortcut && event.code === 'KeyV' && options.clipboardSyncEnabled?.()) {
-      // Do not preventDefault: WebKit must create a trusted paste event so its
-      // clipboardData can be read without programmatic clipboard permission.
-      event.stopPropagation();
-      return;
-    }
     event.preventDefault(); event.stopPropagation();
     const scancode = SCANCODE_MAP[event.code];
     if (scancode !== undefined) applyInput(session, DeviceEvent.keyPressed(scancode));
@@ -207,7 +195,11 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   const canvas = document.createElement('canvas'); canvas.tabIndex = 0; canvas.style.cssText = 'width:100%;flex:1;min-height:0;background:#000;outline:none;object-fit:contain';
   const clipboardSync = document.createElement('button'); clipboardSync.type = 'button'; clipboardSync.textContent = 'Enable clipboard sync';
   clipboardSync.title = 'Share plain text clipboard with this remote desktop while this connection is open';
-  root.append(status, canvas, clipboardSync);
+  const clipboardPaste = document.createElement('input'); clipboardPaste.type = 'text';
+  clipboardPaste.placeholder = 'Local → RDP: click here, then press Ctrl+V';
+  clipboardPaste.title = 'Uses a user-initiated paste event when this WebView blocks clipboard reads';
+  clipboardPaste.disabled = true;
+  root.append(status, canvas, clipboardSync, clipboardPaste);
   let clipboardSyncEnabled = false;
   let lastLocalClipboard = '';
   let lastRemoteClipboard = '';
@@ -215,6 +207,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     clipboardSync.textContent = clipboardSyncEnabled ? 'Disable clipboard sync' : 'Enable clipboard sync';
     clipboardSync.style.background = clipboardSyncEnabled ? '#2d7d46' : '';
     clipboardSync.setAttribute('aria-pressed', String(clipboardSyncEnabled));
+    clipboardPaste.disabled = !clipboardSyncEnabled;
   };
   const sendLocalClipboard = async (text, logSuccess = true) => {
     if (!clipboardSyncEnabled || !session || !text) return;
@@ -230,7 +223,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
       content.free?.();
     }
   };
-  root.addEventListener('paste', async (event) => {
+  clipboardPaste.addEventListener('paste', async (event) => {
     event.preventDefault();
     event.stopPropagation();
     if (!clipboardSyncEnabled || !session) return;
@@ -246,15 +239,7 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     try {
       await sendLocalClipboard(text);
       lastLocalClipboard = text;
-      // The trusted local paste event replaces the browser shortcut. Complete
-      // the same gesture by sending Ctrl+V to Windows after CLIPRDR has the data.
-      applyInputs(session, [
-        DeviceEvent.keyPressed(SCANCODE_MAP.ControlLeft),
-        DeviceEvent.keyPressed(SCANCODE_MAP.KeyV),
-        DeviceEvent.keyReleased(SCANCODE_MAP.KeyV),
-        DeviceEvent.keyReleased(SCANCODE_MAP.ControlLeft),
-      ]);
-      status.textContent = 'Local clipboard sent and pasted into RDP.';
+      status.textContent = 'Local clipboard sent to RDP. Click the desktop and press Ctrl+V.';
       canvas.focus();
     } catch (error) {
       api.log(`RDP clipboard local announce failed: ${error}`);
@@ -266,10 +251,14 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
       return;
     }
     clipboardSyncEnabled = !clipboardSyncEnabled;
+    // Changing focus between the remote canvas and local clipboard controls can
+    // prevent a browser keyup from reaching the canvas. Clear remote modifier
+    // state before entering or leaving clipboard mode.
+    session.releaseAllInputs();
     setClipboardSyncAppearance();
     if (clipboardSyncEnabled) {
-      status.textContent = 'Clipboard sync enabled. Use Ctrl+C / Ctrl+V directly in the RDP desktop.';
-      canvas.focus();
+      status.textContent = 'Clipboard sync enabled. For local → RDP, use the Ctrl+V field below.';
+      clipboardPaste.focus();
     } else {
       status.textContent = 'Clipboard sync disabled for this connection.';
     }

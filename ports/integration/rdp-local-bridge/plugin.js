@@ -2000,11 +2000,6 @@ ${val.stack}`;
     transaction.addEvent(event);
     session.applyInputs(transaction);
   }
-  function applyInputs(session, events) {
-    const transaction = new InputTransaction();
-    for (const event of events) transaction.addEvent(event);
-    session.applyInputs(transaction);
-  }
   function rdpPointerCoordinates(canvas, event) {
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height || !canvas.width || !canvas.height) return null;
@@ -2030,10 +2025,6 @@ ${val.stack}`;
     };
     canvas.addEventListener("keydown", (event) => {
       const clipboardShortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
-      if (clipboardShortcut && event.code === "KeyV" && options.clipboardSyncEnabled?.()) {
-        event.stopPropagation();
-        return;
-      }
       event.preventDefault();
       event.stopPropagation();
       const scancode = SCANCODE_MAP[event.code];
@@ -2127,7 +2118,12 @@ ${val.stack}`;
     clipboardSync.type = "button";
     clipboardSync.textContent = "Enable clipboard sync";
     clipboardSync.title = "Share plain text clipboard with this remote desktop while this connection is open";
-    root.append(status, canvas, clipboardSync);
+    const clipboardPaste = document.createElement("input");
+    clipboardPaste.type = "text";
+    clipboardPaste.placeholder = "Local \u2192 RDP: click here, then press Ctrl+V";
+    clipboardPaste.title = "Uses a user-initiated paste event when this WebView blocks clipboard reads";
+    clipboardPaste.disabled = true;
+    root.append(status, canvas, clipboardSync, clipboardPaste);
     let clipboardSyncEnabled = false;
     let lastLocalClipboard = "";
     let lastRemoteClipboard = "";
@@ -2135,6 +2131,7 @@ ${val.stack}`;
       clipboardSync.textContent = clipboardSyncEnabled ? "Disable clipboard sync" : "Enable clipboard sync";
       clipboardSync.style.background = clipboardSyncEnabled ? "#2d7d46" : "";
       clipboardSync.setAttribute("aria-pressed", String(clipboardSyncEnabled));
+      clipboardPaste.disabled = !clipboardSyncEnabled;
     };
     const sendLocalClipboard = async (text, logSuccess = true) => {
       if (!clipboardSyncEnabled || !session || !text) return;
@@ -2147,7 +2144,7 @@ ${val.stack}`;
         content.free?.();
       }
     };
-    root.addEventListener("paste", async (event) => {
+    clipboardPaste.addEventListener("paste", async (event) => {
       event.preventDefault();
       event.stopPropagation();
       if (!clipboardSyncEnabled || !session) return;
@@ -2163,13 +2160,7 @@ ${val.stack}`;
       try {
         await sendLocalClipboard(text);
         lastLocalClipboard = text;
-        applyInputs(session, [
-          DeviceEvent.keyPressed(SCANCODE_MAP.ControlLeft),
-          DeviceEvent.keyPressed(SCANCODE_MAP.KeyV),
-          DeviceEvent.keyReleased(SCANCODE_MAP.KeyV),
-          DeviceEvent.keyReleased(SCANCODE_MAP.ControlLeft)
-        ]);
-        status.textContent = "Local clipboard sent and pasted into RDP.";
+        status.textContent = "Local clipboard sent to RDP. Click the desktop and press Ctrl+V.";
         canvas.focus();
       } catch (error) {
         api.log(`RDP clipboard local announce failed: ${error}`);
@@ -2181,10 +2172,11 @@ ${val.stack}`;
         return;
       }
       clipboardSyncEnabled = !clipboardSyncEnabled;
+      session.releaseAllInputs();
       setClipboardSyncAppearance();
       if (clipboardSyncEnabled) {
-        status.textContent = "Clipboard sync enabled. Use Ctrl+C / Ctrl+V directly in the RDP desktop.";
-        canvas.focus();
+        status.textContent = "Clipboard sync enabled. For local \u2192 RDP, use the Ctrl+V field below.";
+        clipboardPaste.focus();
       } else {
         status.textContent = "Clipboard sync disabled for this connection.";
       }

@@ -91,18 +91,19 @@ failure status and do not persist credentials.
 After connection, select **Enable clipboard sync** to permit plain-text
 clipboard redirection for that RDP session. Incoming remote text is copied to
 fpasoterm's shared WebView/OS clipboard. For local-to-remote transfer, focus the
-RDP desktop and press Ctrl+V. The resulting user-initiated paste event is
-announced as `text/plain`; after the announcement completes, the port sends the
-same Ctrl+V gesture to Windows. This avoids WebView programmatic-read restrictions
+**Local → RDP** field and press Ctrl+V. The resulting user-initiated paste event
+is announced as `text/plain`; then focus the RDP desktop and press Ctrl+V there.
+This two-step flow avoids WebView programmatic-read restrictions and prevents a
+partially forwarded shortcut from leaving remote modifier keys inconsistent.
 and deliberately avoids polling that can interfere with remote input. This setting
 defaults to off for each connection, is cleared on disconnect, does not log or
 persist clipboard contents, and rejects HTML/files/binary formats and text over
 1 MiB. Verify with disposable text in both directions before relying on it.
 
 Some WebView platforms deny programmatic clipboard reads even after a button
-click. A trusted Ctrl+V event over the focused RDP desktop supplies text through
-the browser paste event instead and does not require that permission. The status
-line immediately reports local paste and remote copy progress. Remote-to-local synchronization
+click. The explicit Ctrl+V field supplies text through the browser paste event
+instead and does not require that permission. The status line immediately
+reports local transfer and remote copy progress. Remote-to-local synchronization
 remains automatic while synchronization is enabled.
 
 ## Interaction and cross-platform verification
