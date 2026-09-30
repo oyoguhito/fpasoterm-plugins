@@ -9,6 +9,9 @@ const api = window.fpasotermPluginApi;
 const forceRfb33 = false;
 
 api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', async () => {
+  // Vine maps X11 Super to macOS Option (for example Super+V produces √).
+  // Its macOS Command key is exposed as X11 Meta instead.
+  const remoteSuperKeysym = forceRfb33 ? Keysyms.XK_Meta_L : Keysyms.XK_Super_L;
   const overlay = api.openElementOverlay({ title: 'noVNC local bridge (test)', width: 1100, height: 720 });
   const status = document.createElement('p');
   const toolbar = document.createElement('div');
@@ -49,7 +52,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   for (const [button, label] of [
     [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [overview, 'Overview'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
-    [superCopy, 'Super+C'], [superPaste, 'Super+V'],
+    [superCopy, forceRfb33 ? 'Command+C' : 'Super+C'],
+    [superPaste, forceRfb33 ? 'Command+V' : 'Super+V'],
   ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
@@ -172,7 +176,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     remote.absY = (y) => {
       const bounds = canvas.getBoundingClientRect();
       const height = Math.max(1, bounds.height);
-      const pointerOffsetY = forceRfb33 ? 16 : 0;
+      const pointerOffsetY = forceRfb33 ? 8 : 0;
       return Math.max(0, Math.min(remote.height - 1, Math.floor((y / height) * canvas.height + remote._viewportLoc.y + pointerOffsetY)));
     };
     const bounds = canvas.getBoundingClientRect();
@@ -287,7 +291,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const sendSuperChord = (character, includeShift = false) => {
     const lower = character.toLowerCase();
     const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
-    const modifiers = [{ keysym: Keysyms.XK_Super_L, code: 'MetaLeft' }];
+    const modifiers = [{ keysym: remoteSuperKeysym, code: 'MetaLeft' }];
     if (includeShift) modifiers.push({ keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' });
     sendChord(modifiers, lower, code);
     api.log(`noVNC physical shortcut sent: Super${includeShift ? '+Shift' : ''}+${lower}`);
@@ -298,7 +302,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     // Ctrl may have reached noVNC before Shift armed the local prefix. Release
     // it before sending the requested remote-only chord.
     sendChord([
-      { keysym: Keysyms.XK_Super_L, code: 'MetaLeft' },
+      { keysym: remoteSuperKeysym, code: 'MetaLeft' },
       { keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' },
     ], 'b', 'KeyB');
     api.log('noVNC shortcut sent: Super+Shift+b (client Ctrl+Shift+b)');
@@ -378,7 +382,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     control.onclick = () => toggleModifier(control, 'Control', Keysyms.XK_Control_L, 'ControlLeft');
     alt.onclick = () => toggleModifier(alt, 'Alt', Keysyms.XK_Alt_L, 'AltLeft');
     shift.onclick = () => toggleModifier(shift, 'Shift', Keysyms.XK_Shift_L, 'ShiftLeft');
-    superKey.onclick = () => toggleModifier(superKey, 'Super', Keysyms.XK_Super_L, 'MetaLeft');
+    superKey.onclick = () => toggleModifier(superKey, 'Super', remoteSuperKeysym, 'MetaLeft');
     escapeButton.onclick = () => {
       sendChord([], '', 'Escape', Keysyms.XK_Escape);
       api.log('noVNC palette key sent: Escape');
@@ -547,7 +551,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         if (isClipboardPasteEvent(keyEvent)) return false;
         const isSuperShift = keyEvent.metaKey && keyEvent.shiftKey;
         if (isSuperShift && keyEvent.code === 'Space') {
-          rfb.sendKey(Keysyms.XK_Super_L, 'MetaLeft', false);
+          rfb.sendKey(remoteSuperKeysym, 'MetaLeft', false);
           rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
           dismissPrefixPalette(); showPrefixPalette();
           api.log('noVNC VNC Shortcuts opened by Super+Shift+Space');
@@ -691,7 +695,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         }
         if (keyEvent.metaKey && keyEvent.shiftKey && keyEvent.code === 'Space') {
           keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
-          rfb.sendKey(Keysyms.XK_Super_L, 'MetaLeft', false);
+          rfb.sendKey(remoteSuperKeysym, 'MetaLeft', false);
           rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
           dismissPrefixPalette(); showPrefixPalette();
           api.log('noVNC VNC Shortcuts opened by canvas Super+Shift+Space');
