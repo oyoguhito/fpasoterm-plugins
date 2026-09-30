@@ -74,6 +74,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let prefixShield = null;
   let removePrefixListener = () => {};
   let releaseHostKeyCapture = () => {};
+  let releaseRemotePointerCapture = () => {};
   let pausedPointerHandlers = null;
   let paletteViewOnly = null;
   let pausedSendMouse = null;
@@ -110,9 +111,16 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     rfb.clipboardPasteFrom(text);
     clipboardPaste.value = text;
     const transport = clipboardTransport();
-    status.textContent = transport.mode === 'legacy'
-      ? 'Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and press Ctrl+V; server-side clipboard support may be required.'
-      : 'Local clipboard sent to VNC (extended). Click the desktop and press Ctrl+V.';
+    if (forceRfb33) {
+      // Vine serves a macOS desktop. ClientCutText updates its clipboard, then
+      // Command+V performs the actual paste in the focused remote application.
+      sendSuperChord('v');
+      status.textContent = 'Local clipboard sent to Vine Server and remote Command+V issued.';
+    } else {
+      status.textContent = transport.mode === 'legacy'
+        ? 'Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and use the remote platform paste shortcut; server-side clipboard support may be required.'
+        : 'Local clipboard sent to VNC. Click the desktop and use the remote platform paste shortcut.';
+    }
     api.log(`noVNC clipboard local-to-remote announced bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(',') || 'none'} actions=${transport.actions.join(',') || 'none'}`);
   });
   const isClipboardPasteEvent = (event) => event.target === clipboardPaste;
@@ -693,7 +701,11 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         if (keyEvent.type !== 'keydown' || !keyEvent.ctrlKey || keyEvent.shiftKey || !/^Key[A-Z]$/.test(keyEvent.code)) return;
         keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
         capturedControlKeys.add(keyEvent.code);
-        sendCtrlChord(keyEvent.key);
+        if (forceRfb33 && (keyEvent.code === 'KeyC' || keyEvent.code === 'KeyV')) {
+          sendSuperChord(keyEvent.key);
+        } else {
+          sendCtrlChord(keyEvent.key);
+        }
       };
       // The host capture on document owns the regular Ctrl+Shift path. Keep a
       // fallback only on document/canvas for WebViews that bypass it, but do
@@ -707,6 +719,22 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         target.addEventListener('keydown', ctrlHandler, true);
       }
       api.log('noVNC keyboard capture armed (document + canvas)');
+      const releaseRemotePointer = () => {
+        if (!rfb || !rfb._mouseButtonMask) return;
+        const position = rfb._mousePos || { x: 0, y: 0 };
+        rfb._mouseButtonMask = 0;
+        rfb._sendMouse(position.x, position.y, 0);
+        api.log('noVNC recovered a missing remote mouse-button release');
+      };
+      window.addEventListener('mouseup', releaseRemotePointer, true);
+      window.addEventListener('blur', releaseRemotePointer, true);
+      clipboardPaste.addEventListener('focus', releaseRemotePointer);
+      releaseRemotePointerCapture = () => {
+        window.removeEventListener('mouseup', releaseRemotePointer, true);
+        window.removeEventListener('blur', releaseRemotePointer, true);
+        clipboardPaste.removeEventListener('focus', releaseRemotePointer);
+        releaseRemotePointer();
+      };
       removePrefixListener = () => {
         for (const target of keyboardTargets) {
           target.removeEventListener('keydown', prefixHandler, true);
@@ -748,7 +776,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     });
     rfb.addEventListener('disconnect', (event) => {
       stopClipboardSync();
-      removePrefixListener(); releaseHostKeyCapture(); dismissPrefixPalette();
+      removePrefixListener(); releaseHostKeyCapture(); releaseRemotePointerCapture(); dismissPrefixPalette();
       for (const modifier of heldModifiers.values()) setToggleAppearance(modifier.button, false);
       heldModifiers.clear();
       status.textContent = event.detail?.clean ? 'Disconnected.' : 'Connection closed unexpectedly. Check Plugin Activity.';

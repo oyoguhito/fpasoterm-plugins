@@ -71,6 +71,12 @@ clipboard, so synchronization cannot starve VNC rendering or input. Clipboard
 content is never logged or persisted; empty text, HTML/files/binary formats,
 and text over 1 MiB are ignored.
 
+In Vine Server compatibility mode the remote desktop is macOS: after text is
+pasted into **Local → VNC**, the plugin sends it with legacy ClientCutText and
+issues remote Command+V automatically. Physical Ctrl+C and Ctrl+V over the VNC
+desktop are likewise translated to remote Command+C and Command+V. Other VNC
+servers retain their native key handling.
+
 Clipboard transfer also requires support from the VNC server. If Plugin
 Activity reports `mode=legacy formats=none actions=none`, noVNC sent the
 standard legacy `ClientCutText` message because the server advertised no
