@@ -130,6 +130,7 @@ const vncEntrySource = fs.readFileSync(path.join(root, 'scripts', 'novnc-plugin-
 assert.match(vncEntrySource, /document\.createElement\('textarea'\)/);
 assert.match(vncEntrySource, /const forceRfb33 = false/);
 assert.match(vncEntrySource, /rfb\._rfbMaxVersion = 3\.3/);
+assert.match(vncEntrySource, /RFB\.messages\.clientEncodings\(this\._sock, \[5, 0\]\)/);
 assert.match(vncEntrySource, /clipboardPaste\.rows = 3/);
 assert.match(vncEntrySource, /clipboardPaste\.addEventListener\('paste'/);
 assert.match(vncEntrySource, /event\.clipboardData\?\.getData\('text\/plain'\)/);

@@ -36,7 +36,10 @@ npm run port:integration:novnc-local-bridge:configure -- \
 
 Do not enable this switch for servers that negotiate normally. RFB 3.3 has a
 different, older security negotiation and cannot use later authentication
-types. `reset` always turns the compatibility mode off.
+types. The compatibility mode also limits framebuffer encodings to Hextile and
+Raw because affected Vine releases can stall on noVNC's complete modern
+encoding and pseudo-encoding list. `reset` always turns the compatibility mode
+off.
 
 The default test endpoint is `tcp://127.0.0.1:5900` (VNC display `:0`). Use
 another trusted private-network endpoint only when it matches the server

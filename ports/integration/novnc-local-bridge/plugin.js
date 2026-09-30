@@ -18013,7 +18013,10 @@
       rfb = new import_rfb.default(screen, bridgeUrl, { credentials: { username, password } });
       if (forceRfb33) {
         rfb._rfbMaxVersion = 3.3;
-        api.log("noVNC compatibility: forcing RFB 3.3 for Vine Server");
+        rfb._sendEncodings = function sendVineEncodings() {
+          import_rfb.default.messages.clientEncodings(this._sock, [5, 0]);
+        };
+        api.log("noVNC compatibility: forcing RFB 3.3 with Hextile/Raw for Vine Server");
       }
       rfb.scaleViewport = true;
       rfb.resizeSession = false;

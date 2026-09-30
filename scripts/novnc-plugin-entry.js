@@ -488,7 +488,13 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       // noVNC has no public maximum-version option.  Set its internal maximum
       // before the asynchronously delivered server banner is negotiated.
       rfb._rfbMaxVersion = 3.3;
-      api.log('noVNC compatibility: forcing RFB 3.3 for Vine Server');
+      // Vine also stalls after ServerInit when noVNC advertises its complete
+      // modern encoding/pseudo-encoding list. Keep this compatibility path to
+      // two encodings verified against Vine: Hextile (5), then Raw (0).
+      rfb._sendEncodings = function sendVineEncodings() {
+        RFB.messages.clientEncodings(this._sock, [5, 0]);
+      };
+      api.log('noVNC compatibility: forcing RFB 3.3 with Hextile/Raw for Vine Server');
     }
     rfb.scaleViewport = true;
     rfb.resizeSession = false;
