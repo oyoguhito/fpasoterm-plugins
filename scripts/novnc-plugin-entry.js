@@ -2,6 +2,11 @@ import RFB from '@novnc/novnc/lib/rfb.js';
 import Keysyms from '@novnc/novnc/lib/input/keysym.js';
 
 const api = window.fpasotermPluginApi;
+// Vine Server advertises RFB 3.8 but some releases stop before sending the
+// security-type list unless the client negotiates RFB 3.3.  Keep the reviewed
+// public port on modern negotiation; the configure command can opt a generated
+// private-target build into the compatibility mode.
+const forceRfb33 = false;
 
 api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', async () => {
   const overlay = api.openElementOverlay({ title: 'noVNC local bridge (test)', width: 1100, height: 720 });
@@ -479,6 +484,12 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     });
     if (password === null) { status.textContent = 'VNC password entry cancelled.'; return; }
     rfb = new RFB(screen, bridgeUrl, { credentials: { username, password } });
+    if (forceRfb33) {
+      // noVNC has no public maximum-version option.  Set its internal maximum
+      // before the asynchronously delivered server banner is negotiated.
+      rfb._rfbMaxVersion = 3.3;
+      api.log('noVNC compatibility: forcing RFB 3.3 for Vine Server');
+    }
     rfb.scaleViewport = true;
     rfb.resizeSession = false;
     reportFramebuffer('RFB created');

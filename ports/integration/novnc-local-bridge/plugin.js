@@ -17538,6 +17538,7 @@
   var import_rfb = __toESM(require_rfb());
   var import_keysym = __toESM(require_keysym());
   var api = window.fpasotermPluginApi;
+  var forceRfb33 = false;
   api.registerCommand("novnc-local-bridge", "Open noVNC local bridge (test)", async () => {
     const overlay = api.openElementOverlay({ title: "noVNC local bridge (test)", width: 1100, height: 720 });
     const status = document.createElement("p");
@@ -18010,6 +18011,10 @@
         return;
       }
       rfb = new import_rfb.default(screen, bridgeUrl, { credentials: { username, password } });
+      if (forceRfb33) {
+        rfb._rfbMaxVersion = 3.3;
+        api.log("noVNC compatibility: forcing RFB 3.3 for Vine Server");
+      }
       rfb.scaleViewport = true;
       rfb.resizeSession = false;
       reportFramebuffer("RFB created");

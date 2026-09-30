@@ -126,6 +126,8 @@ assert.match(vncReadme, /system trust store/);
 assert.match(vncReadme, /no insecure override/);
 const vncEntrySource = fs.readFileSync(path.join(root, 'scripts', 'novnc-plugin-entry.js'), 'utf8');
 assert.match(vncEntrySource, /document\.createElement\('textarea'\)/);
+assert.match(vncEntrySource, /const forceRfb33 = false/);
+assert.match(vncEntrySource, /rfb\._rfbMaxVersion = 3\.3/);
 assert.match(vncEntrySource, /clipboardPaste\.rows = 3/);
 assert.match(vncEntrySource, /clipboardPaste\.addEventListener\('paste'/);
 assert.match(vncEntrySource, /event\.clipboardData\?\.getData\('text\/plain'\)/);
@@ -142,6 +144,11 @@ assert.match(vncEntrySource, /clipboard remote event bytes=/);
 assert.doesNotMatch(vncEntrySource, /Enable clipboard sync/);
 assert.doesNotMatch(vncEntrySource, /api\.readClipboard\(\)/);
 assert.doesNotMatch(vncEntrySource, /setInterval\(/);
+const configureVncSource = fs.readFileSync(path.join(root, 'scripts', 'configure-novnc-port.js'), 'utf8');
+assert.match(configureVncSource, /--rfb-3\.3/);
+const resetVncSource = fs.readFileSync(path.join(root, 'scripts', 'reset-novnc-port.js'), 'utf8');
+assert.match(resetVncSource, /const forceRfb33 = false/);
+assert.match(vncReadme, /Vine Server[\s\S]*--rfb-3\.3/);
 const rdpReadme = fs.readFileSync(
   path.join(root, 'ports', 'integration', 'rdp-local-bridge', 'README.md'),
   'utf8',

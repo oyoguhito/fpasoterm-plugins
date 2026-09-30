@@ -19,13 +19,15 @@ const defaultTarget = 'tcp://127.0.0.1:5900';
 function usage(target = defaultTarget) {
   return `Usage:
   npm run port:integration:novnc-local-bridge:build
-  npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
+  npm run port:integration:novnc-local-bridge:configure -- tcp://host:port [--rfb-3.3]
   npm run port:integration:novnc-local-bridge:reset
 
 Default after reset: ${defaultTarget}
 Currently configured target: ${target}
 
-The build command uses the strict target currently recorded in the noVNC entry.`;
+Use --rfb-3.3 only for a Vine Server that advertises 3.8 but stalls during
+security negotiation. The build command uses the strict target and protocol
+compatibility mode currently recorded in the noVNC entry.`;
 }
 
 function declaredTarget(source) {

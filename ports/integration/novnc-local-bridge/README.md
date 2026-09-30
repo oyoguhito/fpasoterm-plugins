@@ -25,6 +25,19 @@ together:
 npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
 ```
 
+Some Vine Server releases advertise RFB 3.8 but do not return the 3.8
+security-type list. If Diagnostics remains at connection setup with no desktop,
+rebuild that exact private target in RFB 3.3 compatibility mode:
+
+```bash
+npm run port:integration:novnc-local-bridge:configure -- \
+  tcp://host:port --rfb-3.3
+```
+
+Do not enable this switch for servers that negotiate normally. RFB 3.3 has a
+different, older security negotiation and cannot use later authentication
+types. `reset` always turns the compatibility mode off.
+
 The default test endpoint is `tcp://127.0.0.1:5900` (VNC display `:0`). Use
 another trusted private-network endpoint only when it matches the server
 configuration. Then,
