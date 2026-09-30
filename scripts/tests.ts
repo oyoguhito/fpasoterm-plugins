@@ -136,7 +136,9 @@ assert.match(vncEntrySource, /Local clipboard sent to Vine Server and remote Com
 assert.match(vncEntrySource, /noVNC recovered a missing remote mouse-button release/);
 assert.match(vncEntrySource, /pointerOffsetX = forceRfb33 \? 0 : 16/);
 assert.match(vncEntrySource, /pointerOffsetY = forceRfb33 \? 8 : 0/);
-assert.match(vncEntrySource, /remoteSuperKeysym = forceRfb33 \? Keysyms\.XK_Meta_L : Keysyms\.XK_Super_L/);
+assert.match(vncEntrySource, /remoteSuperKeysym = forceRfb33 \? Keysyms\.XK_Alt_L : Keysyms\.XK_Super_L/);
+assert.match(vncEntrySource, /document\.activeElement === clipboardPaste/);
+assert.match(vncEntrySource, /event\.composedPath\?\.\(\)\.includes\(clipboardPaste\)/);
 assert.match(vncEntrySource, /\[superCopy, forceRfb33 \? 'Command\+C' : 'Super\+C'\]/);
 assert.match(vncEntrySource, /superCopy\.addEventListener\('click',[\s\S]*sendSuperChord\('c'\)/);
 assert.match(vncEntrySource, /window\.setTimeout\(\(\) => \{[\s\S]*sendSuperChord\('v'\);[\s\S]*\}, 400\)/);

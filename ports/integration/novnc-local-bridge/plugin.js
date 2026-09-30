@@ -17540,7 +17540,8 @@
   var api = window.fpasotermPluginApi;
   var forceRfb33 = false;
   api.registerCommand("novnc-local-bridge", "Open noVNC local bridge (test)", async () => {
-    const remoteSuperKeysym = forceRfb33 ? import_keysym.default.XK_Meta_L : import_keysym.default.XK_Super_L;
+    const remoteSuperKeysym = forceRfb33 ? import_keysym.default.XK_Alt_L : import_keysym.default.XK_Super_L;
+    const remoteSuperCode = forceRfb33 ? "AltLeft" : "MetaLeft";
     const overlay = api.openElementOverlay({ title: "noVNC local bridge (test)", width: 1100, height: 720 });
     const status = document.createElement("p");
     const toolbar = document.createElement("div");
@@ -17673,7 +17674,7 @@
       }
       api.log(`noVNC clipboard local-to-remote announced bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(",") || "none"} actions=${transport.actions.join(",") || "none"}`);
     });
-    const isClipboardPasteEvent = (event) => event.target === clipboardPaste;
+    const isClipboardPasteEvent = (event) => event.target === clipboardPaste || document.activeElement === clipboardPaste || event.composedPath?.().includes(clipboardPaste);
     const heldModifiers = /* @__PURE__ */ new Map();
     const setToggleAppearance = (button, enabled) => {
       button.setAttribute("aria-pressed", String(enabled));
@@ -17802,7 +17803,7 @@
     const sendSuperChord = (character, includeShift = false) => {
       const lower = character.toLowerCase();
       const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
-      const modifiers = [{ keysym: remoteSuperKeysym, code: "MetaLeft" }];
+      const modifiers = [{ keysym: remoteSuperKeysym, code: remoteSuperCode }];
       if (includeShift) modifiers.push({ keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" });
       sendChord(modifiers, lower, code);
       api.log(`noVNC physical shortcut sent: Super${includeShift ? "+Shift" : ""}+${lower}`);
@@ -17811,7 +17812,7 @@
     const sendSuperShiftB = () => {
       if (!rfb) return;
       sendChord([
-        { keysym: remoteSuperKeysym, code: "MetaLeft" },
+        { keysym: remoteSuperKeysym, code: remoteSuperCode },
         { keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" }
       ], "b", "KeyB");
       api.log("noVNC shortcut sent: Super+Shift+b (client Ctrl+Shift+b)");
@@ -17889,7 +17890,7 @@
       control.onclick = () => toggleModifier(control, "Control", import_keysym.default.XK_Control_L, "ControlLeft");
       alt.onclick = () => toggleModifier(alt, "Alt", import_keysym.default.XK_Alt_L, "AltLeft");
       shift.onclick = () => toggleModifier(shift, "Shift", import_keysym.default.XK_Shift_L, "ShiftLeft");
-      superKey.onclick = () => toggleModifier(superKey, "Super", remoteSuperKeysym, "MetaLeft");
+      superKey.onclick = () => toggleModifier(superKey, "Super", remoteSuperKeysym, remoteSuperCode);
       escapeButton.onclick = () => {
         sendChord([], "", "Escape", import_keysym.default.XK_Escape);
         api.log("noVNC palette key sent: Escape");
@@ -18072,7 +18073,7 @@
           if (isClipboardPasteEvent(keyEvent)) return false;
           const isSuperShift = keyEvent.metaKey && keyEvent.shiftKey;
           if (isSuperShift && keyEvent.code === "Space") {
-            rfb.sendKey(remoteSuperKeysym, "MetaLeft", false);
+            rfb.sendKey(remoteSuperKeysym, remoteSuperCode, false);
             rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
             dismissPrefixPalette();
             showPrefixPalette();
@@ -18202,7 +18203,7 @@
           if (keyEvent.metaKey && keyEvent.shiftKey && keyEvent.code === "Space") {
             keyEvent.preventDefault();
             keyEvent.stopImmediatePropagation();
-            rfb.sendKey(remoteSuperKeysym, "MetaLeft", false);
+            rfb.sendKey(remoteSuperKeysym, remoteSuperCode, false);
             rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
             dismissPrefixPalette();
             showPrefixPalette();
