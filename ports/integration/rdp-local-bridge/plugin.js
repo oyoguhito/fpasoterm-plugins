@@ -2017,6 +2017,7 @@ ${val.stack}`;
   function setupRdpInputHandlers(canvas, session, options = {}) {
     let pendingPointerMove = null;
     let pointerFrame = 0;
+    let metaChordCode = null;
     const flushPointerMove = () => {
       pointerFrame = 0;
       const coordinates = pendingPointerMove;
@@ -2028,6 +2029,10 @@ ${val.stack}`;
       event.preventDefault();
       event.stopPropagation();
       const scancode = SCANCODE_MAP[event.code];
+      if (scancode !== void 0 && options.consumeMetaNext?.()) {
+        applyInput(session, DeviceEvent.keyPressed(SCANCODE_MAP.MetaLeft));
+        metaChordCode = event.code;
+      }
       if (scancode !== void 0) applyInput(session, DeviceEvent.keyPressed(scancode));
       if (clipboardShortcut && event.code === "KeyC" && options.clipboardSyncEnabled?.()) {
         options.remoteCopyStarted?.();
@@ -2038,6 +2043,10 @@ ${val.stack}`;
       event.stopPropagation();
       const scancode = SCANCODE_MAP[event.code];
       if (scancode !== void 0) applyInput(session, DeviceEvent.keyReleased(scancode));
+      if (metaChordCode === event.code) {
+        applyInput(session, DeviceEvent.keyReleased(SCANCODE_MAP.MetaLeft));
+        metaChordCode = null;
+      }
     });
     canvas.addEventListener("mousemove", (event) => {
       const coordinates = rdpPointerCoordinates(canvas, event);
@@ -2111,6 +2120,13 @@ ${val.stack}`;
     root.style.cssText = "display:flex;flex-direction:column;gap:8px;height:100%;box-sizing:border-box;padding:10px;background:#15171c;color:#eee";
     const status = document.createElement("div");
     status.textContent = `Connecting to ${target}\u2026`;
+    const controls = document.createElement("div");
+    controls.style.cssText = "display:flex;align-items:center;gap:8px";
+    const metaNext = document.createElement("button");
+    metaNext.type = "button";
+    metaNext.textContent = "Command / Windows";
+    metaNext.title = "Apply the remote Command/Windows modifier to the next key only";
+    metaNext.style.cssText = "padding:5px 8px;border:1px solid #666;border-radius:4px;background:#263b4e;color:#eee";
     const canvas = document.createElement("canvas");
     canvas.tabIndex = 0;
     canvas.style.cssText = "width:100%;flex:1;min-height:0;background:#000;outline:none;object-fit:contain";
@@ -2121,7 +2137,16 @@ ${val.stack}`;
     clipboardPaste.spellcheck = false;
     clipboardPaste.style.cssText = "box-sizing:border-box;width:100%;min-height:4.5em;resize:vertical";
     clipboardPaste.disabled = true;
-    root.append(status, canvas, clipboardPaste);
+    controls.append(status, metaNext);
+    root.append(controls, canvas, clipboardPaste);
+    let metaNextArmed = false;
+    metaNext.addEventListener("click", () => {
+      metaNextArmed = !metaNextArmed;
+      metaNext.setAttribute("aria-pressed", String(metaNextArmed));
+      metaNext.style.background = metaNextArmed ? "#2d7d46" : "#263b4e";
+      status.textContent = metaNextArmed ? "Command / Windows armed for the next key." : "Command / Windows modifier cancelled.";
+      canvas.focus();
+    });
     let clipboardSyncEnabled = false;
     let lastLocalClipboard = "";
     let lastRemoteClipboard = "";
@@ -2215,6 +2240,13 @@ ${val.stack}`;
         clipboardSyncEnabled: () => clipboardSyncEnabled,
         remoteCopyStarted: () => {
           status.textContent = "Waiting for the remote clipboard\u2026";
+        },
+        consumeMetaNext: () => {
+          if (!metaNextArmed) return false;
+          metaNextArmed = false;
+          metaNext.setAttribute("aria-pressed", "false");
+          metaNext.style.background = "#263b4e";
+          return true;
         }
       });
       releaseRdpKeyCapture = overlay.captureKeys?.((event) => {

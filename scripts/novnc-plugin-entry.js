@@ -24,6 +24,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const panUp = document.createElement('button');
   const panDown = document.createElement('button');
   const panRight = document.createElement('button');
+  const metaNext = document.createElement('button');
   const clipboardPaste = document.createElement('textarea');
   const control = document.createElement('button');
   const alt = document.createElement('button');
@@ -51,6 +52,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   for (const [button, label] of [
     [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [overview, 'Overview'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
+    [metaNext, 'Command / Windows'],
   ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
@@ -58,7 +60,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panLeft.title = 'Pan left'; panUp.title = 'Pan up';
   panDown.title = 'Pan down'; panRight.title = 'Pan right';
   overview.title = 'Show a clickable overview of the complete remote desktop';
-  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight);
+  metaNext.title = 'Apply the remote Command/Windows modifier to the next key only';
+  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext);
   clipboardPaste.rows = 3;
   clipboardPaste.placeholder = 'Local → VNC: click here, then press Ctrl+V';
   clipboardPaste.title = 'Uses a user-initiated paste event when this WebView blocks clipboard reads';
@@ -92,6 +95,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let clipboardSyncEnabled = false;
   let lastRemoteClipboard = '';
   let remotePasteTimer = null;
+  let metaNextArmed = false;
   const clipboardText = (value) => {
     const text = String(value || '');
     return new TextEncoder().encode(text).byteLength <= maxClipboardBytes ? text : null;
@@ -149,6 +153,13 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const setToggleAppearance = (button, enabled) => {
     button.setAttribute('aria-pressed', String(enabled));
     button.style.background = enabled ? '#2d7d46' : '#263b4e';
+  };
+  const setMetaNextArmed = (enabled) => {
+    metaNextArmed = enabled;
+    setToggleAppearance(metaNext, enabled);
+    status.textContent = enabled
+      ? 'Command / Windows armed for the next key.'
+      : 'Command / Windows modifier cancelled.';
   };
   const display = () => rfb?._display;
   const viewport = () => display()?._viewportLoc;
@@ -438,6 +449,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   };
   zoomOut.addEventListener('click', () => { zoom = Math.max(0.1, zoom - 0.1); applyZoom(); });
   zoomIn.addEventListener('click', () => { zoom = Math.min(2.5, zoom + 0.1); applyZoom(); });
+  metaNext.addEventListener('click', () => {
+    setMetaNextArmed(!metaNextArmed);
+    rfb?.focus();
+  });
   fit.addEventListener('click', () => {
     if (rfb) {
       rfb.clipViewport = false;
@@ -546,6 +561,15 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       const capturedControlKeys = new Set();
       const handleHostCtrlKey = (keyEvent) => {
         if (isClipboardPasteEvent(keyEvent)) return false;
+        if (metaNextArmed && keyEvent.type === 'keydown' && /^[a-z0-9]$/i.test(keyEvent.key)) {
+          keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
+          const character = keyEvent.key.toLowerCase();
+          const code = /^[a-z]$/i.test(character) ? `Key${character.toUpperCase()}` : `Digit${character}`;
+          setMetaNextArmed(false);
+          sendChord([{ keysym: remoteSuperKeysym, code: remoteSuperCode }], character, code);
+          status.textContent = `Command / Windows+${character} sent.`;
+          return true;
+        }
         const isSuperShift = keyEvent.metaKey && keyEvent.shiftKey;
         if (isSuperShift && keyEvent.code === 'Space') {
           rfb.sendKey(remoteSuperKeysym, remoteSuperCode, false);
