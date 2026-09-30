@@ -24,8 +24,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const panUp = document.createElement('button');
   const panDown = document.createElement('button');
   const panRight = document.createElement('button');
-  const superCopy = document.createElement('button');
-  const superPaste = document.createElement('button');
   const clipboardPaste = document.createElement('textarea');
   const control = document.createElement('button');
   const alt = document.createElement('button');
@@ -53,8 +51,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   for (const [button, label] of [
     [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [overview, 'Overview'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
-    [superCopy, forceRfb33 ? 'Command+C' : 'Super+C'],
-    [superPaste, forceRfb33 ? 'Command+V' : 'Super+V'],
   ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
@@ -62,9 +58,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panLeft.title = 'Pan left'; panUp.title = 'Pan up';
   panDown.title = 'Pan down'; panRight.title = 'Pan right';
   overview.title = 'Show a clickable overview of the complete remote desktop';
-  superCopy.title = 'Send macOS Command+C to the remote desktop';
-  superPaste.title = 'Send macOS Command+V to the remote desktop';
-  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, superCopy, superPaste);
+  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight);
   clipboardPaste.rows = 3;
   clipboardPaste.placeholder = 'Local → VNC: click here, then press Ctrl+V';
   clipboardPaste.title = 'Uses a user-initiated paste event when this WebView blocks clipboard reads';
@@ -175,7 +169,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     remote.absX = (x) => {
       const bounds = canvas.getBoundingClientRect();
       const width = Math.max(1, bounds.width);
-      const pointerOffsetX = forceRfb33 ? 0 : 16;
+      const pointerOffsetX = 16;
       return Math.max(0, Math.min(remote.width - 1, Math.floor((x / width) * canvas.width + remote._viewportLoc.x + pointerOffsetX)));
     };
     remote.absY = (y) => {
@@ -444,8 +438,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   };
   zoomOut.addEventListener('click', () => { zoom = Math.max(0.1, zoom - 0.1); applyZoom(); });
   zoomIn.addEventListener('click', () => { zoom = Math.min(2.5, zoom + 0.1); applyZoom(); });
-  superCopy.addEventListener('click', () => { rfb?.focus(); sendSuperChord('c'); });
-  superPaste.addEventListener('click', () => { rfb?.focus(); sendSuperChord('v'); });
   fit.addEventListener('click', () => {
     if (rfb) {
       rfb.clipViewport = false;

@@ -17553,8 +17553,6 @@
     const panUp = document.createElement("button");
     const panDown = document.createElement("button");
     const panRight = document.createElement("button");
-    const superCopy = document.createElement("button");
-    const superPaste = document.createElement("button");
     const clipboardPaste = document.createElement("textarea");
     const control = document.createElement("button");
     const alt = document.createElement("button");
@@ -17582,9 +17580,7 @@
       [panLeft, "\u2190"],
       [panUp, "\u2191"],
       [panDown, "\u2193"],
-      [panRight, "\u2192"],
-      [superCopy, forceRfb33 ? "Command+C" : "Super+C"],
-      [superPaste, forceRfb33 ? "Command+V" : "Super+V"]
+      [panRight, "\u2192"]
     ]) {
       button.type = "button";
       button.textContent = label;
@@ -17595,9 +17591,7 @@
     panDown.title = "Pan down";
     panRight.title = "Pan right";
     overview.title = "Show a clickable overview of the complete remote desktop";
-    superCopy.title = "Send macOS Command+C to the remote desktop";
-    superPaste.title = "Send macOS Command+V to the remote desktop";
-    toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, superCopy, superPaste);
+    toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight);
     clipboardPaste.rows = 3;
     clipboardPaste.placeholder = "Local \u2192 VNC: click here, then press Ctrl+V";
     clipboardPaste.title = "Uses a user-initiated paste event when this WebView blocks clipboard reads";
@@ -17696,7 +17690,7 @@
       remote.absX = (x) => {
         const bounds2 = canvas.getBoundingClientRect();
         const width = Math.max(1, bounds2.width);
-        const pointerOffsetX = forceRfb33 ? 0 : 16;
+        const pointerOffsetX = 16;
         return Math.max(0, Math.min(remote.width - 1, Math.floor(x / width * canvas.width + remote._viewportLoc.x + pointerOffsetX)));
       };
       remote.absY = (y) => {
@@ -17956,14 +17950,6 @@
     zoomIn.addEventListener("click", () => {
       zoom = Math.min(2.5, zoom + 0.1);
       applyZoom();
-    });
-    superCopy.addEventListener("click", () => {
-      rfb?.focus();
-      sendSuperChord("c");
-    });
-    superPaste.addEventListener("click", () => {
-      rfb?.focus();
-      sendSuperChord("v");
     });
     fit.addEventListener("click", () => {
       if (rfb) {
