@@ -17622,6 +17622,7 @@
     const maxClipboardBytes = 1024 * 1024;
     let clipboardSyncEnabled = false;
     let lastRemoteClipboard = "";
+    let remotePasteTimer = null;
     const clipboardText = (value) => {
       const text = String(value || "");
       return new TextEncoder().encode(text).byteLength <= maxClipboardBytes ? text : null;
@@ -17629,6 +17630,10 @@
     const stopClipboardSync = () => {
       clipboardSyncEnabled = false;
       clipboardPaste.disabled = true;
+      if (remotePasteTimer !== null) {
+        window.clearTimeout(remotePasteTimer);
+        remotePasteTimer = null;
+      }
     };
     clipboardPaste.addEventListener("paste", (event) => {
       event.preventDefault();
@@ -17647,8 +17652,15 @@
       clipboardPaste.value = text;
       const transport = clipboardTransport();
       if (forceRfb33) {
-        sendSuperChord("v");
-        status.textContent = "Local clipboard sent to Vine Server and remote Command+V issued.";
+        if (remotePasteTimer !== null) window.clearTimeout(remotePasteTimer);
+        status.textContent = "Local clipboard sent to Vine Server; waiting for the remote pasteboard\u2026";
+        remotePasteTimer = window.setTimeout(() => {
+          remotePasteTimer = null;
+          if (!clipboardSyncEnabled || !connected || !rfb) return;
+          rfb.focus();
+          sendSuperChord("v");
+          status.textContent = "Local clipboard sent to Vine Server and remote Command+V issued.";
+        }, 400);
       } else {
         status.textContent = transport.mode === "legacy" ? "Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and use the remote platform paste shortcut; server-side clipboard support may be required." : "Local clipboard sent to VNC. Click the desktop and use the remote platform paste shortcut.";
       }
@@ -17676,7 +17688,8 @@
       remote.absX = (x) => {
         const bounds2 = canvas.getBoundingClientRect();
         const width = Math.max(1, bounds2.width);
-        return Math.max(0, Math.min(remote.width - 1, Math.floor(x / width * canvas.width + remote._viewportLoc.x + 16)));
+        const pointerOffsetX = forceRfb33 ? 0 : 16;
+        return Math.max(0, Math.min(remote.width - 1, Math.floor(x / width * canvas.width + remote._viewportLoc.x + pointerOffsetX)));
       };
       remote.absY = (y) => {
         const bounds2 = canvas.getBoundingClientRect();
@@ -18233,11 +18246,11 @@
           rfb._sendMouse(position.x, position.y, 0);
           api.log("noVNC recovered a missing remote mouse-button release");
         };
-        window.addEventListener("mouseup", releaseRemotePointer, true);
+        window.addEventListener("mouseup", releaseRemotePointer);
         window.addEventListener("blur", releaseRemotePointer, true);
         clipboardPaste.addEventListener("focus", releaseRemotePointer);
         releaseRemotePointerCapture = () => {
-          window.removeEventListener("mouseup", releaseRemotePointer, true);
+          window.removeEventListener("mouseup", releaseRemotePointer);
           window.removeEventListener("blur", releaseRemotePointer, true);
           clipboardPaste.removeEventListener("focus", releaseRemotePointer);
           releaseRemotePointer();

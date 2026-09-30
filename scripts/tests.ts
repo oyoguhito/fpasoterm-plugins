@@ -134,6 +134,8 @@ assert.match(vncEntrySource, /RFB\.messages\.clientEncodings\(this\._sock, \[5, 
 assert.match(vncEntrySource, /forceRfb33 && \(keyEvent\.code === 'KeyC' \|\| keyEvent\.code === 'KeyV'\)/);
 assert.match(vncEntrySource, /Local clipboard sent to Vine Server and remote Command\+V issued/);
 assert.match(vncEntrySource, /noVNC recovered a missing remote mouse-button release/);
+assert.match(vncEntrySource, /pointerOffsetX = forceRfb33 \? 0 : 16/);
+assert.match(vncEntrySource, /window\.setTimeout\(\(\) => \{[\s\S]*sendSuperChord\('v'\);[\s\S]*\}, 400\)/);
 assert.match(vncEntrySource, /clipboardPaste\.rows = 3/);
 assert.match(vncEntrySource, /clipboardPaste\.addEventListener\('paste'/);
 assert.match(vncEntrySource, /event\.clipboardData\?\.getData\('text\/plain'\)/);
@@ -141,7 +143,7 @@ assert.match(vncEntrySource, /clipboardSyncEnabled = true;\s*clipboardPaste\.dis
 assert.match(vncEntrySource, /isClipboardPasteEvent\(keyEvent\)/);
 assert.match(vncEntrySource, /const normalizePointerCoordinates = \(\) =>/);
 assert.match(vncEntrySource, /\(x \/ width\) \* canvas\.width/);
-assert.match(vncEntrySource, /remote\._viewportLoc\.x \+ 16/);
+assert.match(vncEntrySource, /remote\._viewportLoc\.x \+ pointerOffsetX/);
 assert.match(vncEntrySource, /\(y \/ height\) \* canvas\.height/);
 assert.match(vncEntrySource, /const handledHostKeyEvents = new WeakSet\(\)/);
 assert.match(vncEntrySource, /handledHostKeyEvents\.has\(keyEvent\)/);

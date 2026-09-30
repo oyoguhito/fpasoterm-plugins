@@ -87,6 +87,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const maxClipboardBytes = 1024 * 1024;
   let clipboardSyncEnabled = false;
   let lastRemoteClipboard = '';
+  let remotePasteTimer = null;
   const clipboardText = (value) => {
     const text = String(value || '');
     return new TextEncoder().encode(text).byteLength <= maxClipboardBytes ? text : null;
@@ -94,6 +95,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const stopClipboardSync = () => {
     clipboardSyncEnabled = false;
     clipboardPaste.disabled = true;
+    if (remotePasteTimer !== null) {
+      window.clearTimeout(remotePasteTimer);
+      remotePasteTimer = null;
+    }
   };
   clipboardPaste.addEventListener('paste', (event) => {
     event.preventDefault();
@@ -114,8 +119,16 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     if (forceRfb33) {
       // Vine serves a macOS desktop. ClientCutText updates its clipboard, then
       // Command+V performs the actual paste in the focused remote application.
-      sendSuperChord('v');
-      status.textContent = 'Local clipboard sent to Vine Server and remote Command+V issued.';
+      // Give Vine time to publish ClientCutText to the macOS pasteboard first.
+      if (remotePasteTimer !== null) window.clearTimeout(remotePasteTimer);
+      status.textContent = 'Local clipboard sent to Vine Server; waiting for the remote pasteboard…';
+      remotePasteTimer = window.setTimeout(() => {
+        remotePasteTimer = null;
+        if (!clipboardSyncEnabled || !connected || !rfb) return;
+        rfb.focus();
+        sendSuperChord('v');
+        status.textContent = 'Local clipboard sent to Vine Server and remote Command+V issued.';
+      }, 400);
     } else {
       status.textContent = transport.mode === 'legacy'
         ? 'Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and use the remote platform paste shortcut; server-side clipboard support may be required.'
@@ -148,7 +161,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     remote.absX = (x) => {
       const bounds = canvas.getBoundingClientRect();
       const width = Math.max(1, bounds.width);
-      return Math.max(0, Math.min(remote.width - 1, Math.floor((x / width) * canvas.width + remote._viewportLoc.x + 16)));
+      const pointerOffsetX = forceRfb33 ? 0 : 16;
+      return Math.max(0, Math.min(remote.width - 1, Math.floor((x / width) * canvas.width + remote._viewportLoc.x + pointerOffsetX)));
     };
     remote.absY = (y) => {
       const bounds = canvas.getBoundingClientRect();
@@ -726,11 +740,13 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         rfb._sendMouse(position.x, position.y, 0);
         api.log('noVNC recovered a missing remote mouse-button release');
       };
-      window.addEventListener('mouseup', releaseRemotePointer, true);
+      // Let noVNC process normal canvas mouseup first. The bubbling window
+      // listener is only a fallback when release occurs outside the canvas.
+      window.addEventListener('mouseup', releaseRemotePointer);
       window.addEventListener('blur', releaseRemotePointer, true);
       clipboardPaste.addEventListener('focus', releaseRemotePointer);
       releaseRemotePointerCapture = () => {
-        window.removeEventListener('mouseup', releaseRemotePointer, true);
+        window.removeEventListener('mouseup', releaseRemotePointer);
         window.removeEventListener('blur', releaseRemotePointer, true);
         clipboardPaste.removeEventListener('focus', releaseRemotePointer);
         releaseRemotePointer();
