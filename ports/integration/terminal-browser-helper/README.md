@@ -21,12 +21,10 @@ Requirements and current limits:
   `PATH`.
 - tmux/herdr owns pane creation and lifecycle. fpasoterm remains a single PTY.
 - terminal-browser still needs a terminal graphics protocol supported by the
-  host terminal. Current fpasoterm builds intentionally disable Kitty/SIXEL/
-  iTerm image rendering because the available xterm image addon can freeze the
-  Tauri/WebKitGTK WebView on ChromeOS. The helper checks
-  `capabilities.terminalGraphics` and refuses to insert the command when it is
-  disabled, preventing the known WebView freeze. Use terminal-browser from an
-  external supported terminal in that case.
+  host terminal. fpasoterm 1.6.11 adds a bounded direct Kitty PNG/RGB/RGBA
+  renderer which serializes decode work and drops stale pending frames. The
+  helper checks `capabilities.terminalGraphics` and refuses to insert the
+  command on older or explicitly graphics-disabled builds.
 - The plugin does not use terminal-browser's private daemon socket or CDP
   database. Those are not public stable APIs in terminal-browser 0.5.3.
 
@@ -39,3 +37,14 @@ the resulting browser may control it with `terminal-browser ls --all` and
 browser session, tab ID, snapshot, click, or fill API to Codex. On fpasoterm
 builds without a safe graphics renderer, starting the command still does not
 make the browser image usable.
+
+## Review
+
+1. Rebuild and restart fpasoterm 1.6.11 or later.
+2. Reinstall this port with `--force --enable`.
+3. Run **Insert terminal-browser command**, enter an HTTP(S) URL, review the
+   inserted command, and press Enter.
+4. Confirm the page appears and terminal input remains responsive while the
+   page updates. Close it with terminal-browser's normal quit command.
+5. Set `[terminal.images] enabled = false`, restart, and confirm the helper
+   refuses to insert the command instead of starting an unusable session.
