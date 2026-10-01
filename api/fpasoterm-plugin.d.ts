@@ -35,6 +35,8 @@ type FpasotermPluginApi = {
   readClipboard: () => Promise<string>;
   /** Writes plain UTF-8 text through fpasoterm's shared WebView and OS clipboard path. */
   writeClipboard: (text: string) => Promise<void>;
+  /** Inserts printable text into the active PTY without pressing Enter. */
+  insertTerminalText: (text: string) => void;
   /** Opens an HTTP(S) URL in the external browser after an explicit user action. */
   openExternalUrl: (url: string) => Promise<void>;
   /**

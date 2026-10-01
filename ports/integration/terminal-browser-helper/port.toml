@@ -1,0 +1,10 @@
+[port]
+id = "integration/terminal-browser-helper"
+name = "terminal-browser-helper"
+version = "1.0.0"
+author = "oyoguhito"
+description = "Prepares a reviewed terminal-browser command for the current tmux or herdr pane without executing it."
+license = "MIT"
+minFpasotermVersion = "1.6.11"
+source = "plugin.ts"
+installPath = "integration/terminal-browser-helper.ts"
