@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.1
+// @fpasoterm-plugin version: 1.1.0
 // @fpasoterm-plugin description: Prepares a reviewed terminal-browser command for the current tmux or herdr pane.
 
 const api = window.fpasotermPluginApi;
