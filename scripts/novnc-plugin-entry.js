@@ -2,8 +2,17 @@ import RFB from '@novnc/novnc/lib/rfb.js';
 import Keysyms from '@novnc/novnc/lib/input/keysym.js';
 
 const api = window.fpasotermPluginApi;
+// Vine Server advertises RFB 3.8 but some releases stop before sending the
+// security-type list unless the client negotiates RFB 3.3.  Keep the reviewed
+// public port on modern negotiation; the configure command can opt a generated
+// private-target build into the compatibility mode.
+const forceRfb33 = false;
 
 api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', async () => {
+  // Vine maps X11 Super/Meta to macOS Option (for example +V produces √).
+  // Its macOS Command key is exposed as X11 Alt.
+  const remoteSuperKeysym = forceRfb33 ? Keysyms.XK_Alt_L : Keysyms.XK_Super_L;
+  const remoteSuperCode = forceRfb33 ? 'AltLeft' : 'MetaLeft';
   const overlay = api.openElementOverlay({ title: 'noVNC local bridge (test)', width: 1100, height: 720 });
   const status = document.createElement('p');
   const toolbar = document.createElement('div');
@@ -15,6 +24,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const panUp = document.createElement('button');
   const panDown = document.createElement('button');
   const panRight = document.createElement('button');
+  const metaNext = document.createElement('button');
+  const clipboardPaste = document.createElement('textarea');
   const control = document.createElement('button');
   const alt = document.createElement('button');
   const shift = document.createElement('button');
@@ -41,6 +52,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   for (const [button, label] of [
     [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [overview, 'Overview'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
+    [metaNext, 'Command / Windows'],
   ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
@@ -48,9 +60,16 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panLeft.title = 'Pan left'; panUp.title = 'Pan up';
   panDown.title = 'Pan down'; panRight.title = 'Pan right';
   overview.title = 'Show a clickable overview of the complete remote desktop';
-  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight);
+  metaNext.title = 'Apply the remote Command/Windows modifier to the next key only';
+  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext);
+  clipboardPaste.rows = 3;
+  clipboardPaste.placeholder = 'Local → VNC: click here, then press Ctrl+V';
+  clipboardPaste.title = 'Uses a user-initiated paste event when this WebView blocks clipboard reads';
+  clipboardPaste.spellcheck = false;
+  clipboardPaste.disabled = true;
+  clipboardPaste.style.cssText = 'box-sizing:border-box;flex:0 0 auto;width:100%;min-height:4.5em;resize:vertical';
   screen.append(panCapture, navigator);
-  overlay.element.replaceChildren(toolbar, screen);
+  overlay.element.replaceChildren(toolbar, screen, clipboardPaste);
   status.textContent = 'Waiting for connection confirmation…';
   let rfb;
   let connected = false;
@@ -62,18 +81,117 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let prefixShield = null;
   let removePrefixListener = () => {};
   let releaseHostKeyCapture = () => {};
+  let releaseRemotePointerCapture = () => {};
   let pausedPointerHandlers = null;
   let paletteViewOnly = null;
   let pausedSendMouse = null;
   let ctrlBPrefixUntil = 0;
   let suppressCtrlBPrefixKeyup = false;
+  const handledHostKeyEvents = new WeakSet();
+  // Clipboard text is never logged or persisted. Local text is accepted only
+  // through this connection-scoped textarea's user-initiated paste event, so
+  // no clipboard polling competes with VNC rendering or remote input.
+  const maxClipboardBytes = 1024 * 1024;
+  let clipboardSyncEnabled = false;
+  let lastRemoteClipboard = '';
+  let remotePasteTimer = null;
+  let metaNextArmed = false;
+  const clipboardText = (value) => {
+    const text = String(value || '');
+    return new TextEncoder().encode(text).byteLength <= maxClipboardBytes ? text : null;
+  };
+  const stopClipboardSync = () => {
+    clipboardSyncEnabled = false;
+    clipboardPaste.disabled = true;
+    if (remotePasteTimer !== null) {
+      window.clearTimeout(remotePasteTimer);
+      remotePasteTimer = null;
+    }
+  };
+  clipboardPaste.addEventListener('paste', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!clipboardSyncEnabled || !connected || !rfb) return;
+    const text = clipboardText(event.clipboardData?.getData('text/plain') || '');
+    if (text === null) {
+      api.log('noVNC clipboard local-to-remote skipped text over 1048576 bytes');
+      return;
+    }
+    if (!text) {
+      api.log('noVNC clipboard paste event contained no plain text');
+      return;
+    }
+    rfb.clipboardPasteFrom(text);
+    clipboardPaste.value = text;
+    const transport = clipboardTransport();
+    if (forceRfb33) {
+      // Vine serves a macOS desktop. ClientCutText updates its clipboard, then
+      // Command+V performs the actual paste in the focused remote application.
+      // Give Vine time to publish ClientCutText to the macOS pasteboard first.
+      if (remotePasteTimer !== null) window.clearTimeout(remotePasteTimer);
+      status.textContent = 'Local clipboard sent to Vine Server; waiting for the remote pasteboard…';
+      remotePasteTimer = window.setTimeout(() => {
+        remotePasteTimer = null;
+        if (!clipboardSyncEnabled || !connected || !rfb) return;
+        rfb.focus();
+        sendSuperChord('v');
+        status.textContent = 'Local clipboard sent to Vine Server and remote Command+V issued.';
+      }, 400);
+    } else {
+      status.textContent = transport.mode === 'legacy'
+        ? 'Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and use the remote platform paste shortcut; server-side clipboard support may be required.'
+        : 'Local clipboard sent to VNC. Click the desktop and use the remote platform paste shortcut.';
+    }
+    api.log(`noVNC clipboard local-to-remote announced bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(',') || 'none'} actions=${transport.actions.join(',') || 'none'}`);
+  });
+  const isClipboardPasteEvent = (event) => (
+    event.target === clipboardPaste ||
+    document.activeElement === clipboardPaste ||
+    event.composedPath?.().includes(clipboardPaste)
+  );
   const heldModifiers = new Map();
   const setToggleAppearance = (button, enabled) => {
     button.setAttribute('aria-pressed', String(enabled));
     button.style.background = enabled ? '#2d7d46' : '#263b4e';
   };
+  const setMetaNextArmed = (enabled) => {
+    metaNextArmed = enabled;
+    setToggleAppearance(metaNext, enabled);
+    status.textContent = enabled
+      ? 'Command / Windows armed for the next key.'
+      : 'Command / Windows modifier cancelled.';
+  };
   const display = () => rfb?._display;
   const viewport = () => display()?._viewportLoc;
+  const clipboardTransport = () => {
+    const formats = Object.keys(rfb?._clipboardServerCapabilitiesFormats || {});
+    const actions = Object.keys(rfb?._clipboardServerCapabilitiesActions || {}).filter(
+      (key) => rfb._clipboardServerCapabilitiesActions[key],
+    );
+    return { mode: formats.length && actions.length ? 'extended' : 'legacy', formats, actions };
+  };
+  const normalizePointerCoordinates = () => {
+    const remote = display();
+    const canvas = rfb?._canvas;
+    if (!remote || !canvas) return;
+    // WebView layout can round or constrain the CSS canvas independently of
+    // Display.scale. Normalize through the measured canvas rectangle so the
+    // remote pointer stays aligned in Fit and manual zoom modes.
+    remote.absX = (x) => {
+      const bounds = canvas.getBoundingClientRect();
+      const width = Math.max(1, bounds.width);
+      const pointerOffsetX = 16;
+      return Math.max(0, Math.min(remote.width - 1, Math.floor((x / width) * canvas.width + remote._viewportLoc.x + pointerOffsetX)));
+    };
+    remote.absY = (y) => {
+      const bounds = canvas.getBoundingClientRect();
+      const height = Math.max(1, bounds.height);
+      const pointerOffsetY = forceRfb33 ? 8 : 0;
+      return Math.max(0, Math.min(remote.height - 1, Math.floor((y / height) * canvas.height + remote._viewportLoc.y + pointerOffsetY)));
+    };
+    const bounds = canvas.getBoundingClientRect();
+    api.log(`noVNC pointer mapping normalized css=${Math.round(bounds.width)}x${Math.round(bounds.height)} pixels=${canvas.width}x${canvas.height} scale=${remote.scale}`);
+  };
   const fittedScale = () => {
     const remote = display();
     if (!remote?.width || !remote?.height) return 1;
@@ -183,7 +301,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const sendSuperChord = (character, includeShift = false) => {
     const lower = character.toLowerCase();
     const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
-    const modifiers = [{ keysym: Keysyms.XK_Super_L, code: 'MetaLeft' }];
+    const modifiers = [{ keysym: remoteSuperKeysym, code: remoteSuperCode }];
     if (includeShift) modifiers.push({ keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' });
     sendChord(modifiers, lower, code);
     api.log(`noVNC physical shortcut sent: Super${includeShift ? '+Shift' : ''}+${lower}`);
@@ -194,7 +312,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     // Ctrl may have reached noVNC before Shift armed the local prefix. Release
     // it before sending the requested remote-only chord.
     sendChord([
-      { keysym: Keysyms.XK_Super_L, code: 'MetaLeft' },
+      { keysym: remoteSuperKeysym, code: remoteSuperCode },
       { keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' },
     ], 'b', 'KeyB');
     api.log('noVNC shortcut sent: Super+Shift+b (client Ctrl+Shift+b)');
@@ -274,7 +392,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     control.onclick = () => toggleModifier(control, 'Control', Keysyms.XK_Control_L, 'ControlLeft');
     alt.onclick = () => toggleModifier(alt, 'Alt', Keysyms.XK_Alt_L, 'AltLeft');
     shift.onclick = () => toggleModifier(shift, 'Shift', Keysyms.XK_Shift_L, 'ShiftLeft');
-    superKey.onclick = () => toggleModifier(superKey, 'Super', Keysyms.XK_Super_L, 'MetaLeft');
+    superKey.onclick = () => toggleModifier(superKey, 'Super', remoteSuperKeysym, remoteSuperCode);
     escapeButton.onclick = () => {
       sendChord([], '', 'Escape', Keysyms.XK_Escape);
       api.log('noVNC palette key sent: Escape');
@@ -331,6 +449,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   };
   zoomOut.addEventListener('click', () => { zoom = Math.max(0.1, zoom - 0.1); applyZoom(); });
   zoomIn.addEventListener('click', () => { zoom = Math.min(2.5, zoom + 0.1); applyZoom(); });
+  metaNext.addEventListener('click', () => {
+    setMetaNextArmed(!metaNextArmed);
+    rfb?.focus();
+  });
   fit.addEventListener('click', () => {
     if (rfb) {
       rfb.clipViewport = false;
@@ -393,7 +515,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   try {
     // This exact target is declared in the installed plugin header. To connect
     // elsewhere, make a reviewed plugin with a matching target declaration.
-    const bridgeUrl = await api.openVncBridge({ target: 'tcp://127.0.0.1:59999' });
+    const bridgeUrl = await api.openVncBridge({ target: 'tcp://127.0.0.1:5900' });
     status.textContent = 'Connecting to the configured verification target through the local bridge…';
     const username = await api.promptText({
       title: 'VNC username',
@@ -408,11 +530,25 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     });
     if (password === null) { status.textContent = 'VNC password entry cancelled.'; return; }
     rfb = new RFB(screen, bridgeUrl, { credentials: { username, password } });
+    if (forceRfb33) {
+      // noVNC has no public maximum-version option.  Set its internal maximum
+      // before the asynchronously delivered server banner is negotiated.
+      rfb._rfbMaxVersion = 3.3;
+      // Vine also stalls after ServerInit when noVNC advertises its complete
+      // modern encoding/pseudo-encoding list. Keep this compatibility path to
+      // two encodings verified against Vine: Hextile (5), then Raw (0).
+      rfb._sendEncodings = function sendVineEncodings() {
+        RFB.messages.clientEncodings(this._sock, [5, 0]);
+      };
+      api.log('noVNC compatibility: forcing RFB 3.3 with Hextile/Raw for Vine Server');
+    }
     rfb.scaleViewport = true;
     rfb.resizeSession = false;
     reportFramebuffer('RFB created');
     rfb.addEventListener('connect', (event) => {
       connected = true;
+      clipboardSyncEnabled = true;
+      clipboardPaste.disabled = false;
       api.dismissPrompts();
       status.textContent = `Connected: ${event.detail?.name || 'VNC server'}; waiting for remote framebuffer…`;
       // RFB's keyboard listener is attached to its canvas, not the element
@@ -424,9 +560,19 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       releaseHostKeyCapture();
       const capturedControlKeys = new Set();
       const handleHostCtrlKey = (keyEvent) => {
+        if (isClipboardPasteEvent(keyEvent)) return false;
+        if (metaNextArmed && keyEvent.type === 'keydown' && /^[a-z0-9]$/i.test(keyEvent.key)) {
+          keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
+          const character = keyEvent.key.toLowerCase();
+          const code = /^[a-z]$/i.test(character) ? `Key${character.toUpperCase()}` : `Digit${character}`;
+          setMetaNextArmed(false);
+          sendChord([{ keysym: remoteSuperKeysym, code: remoteSuperCode }], character, code);
+          status.textContent = `Command / Windows+${character} sent.`;
+          return true;
+        }
         const isSuperShift = keyEvent.metaKey && keyEvent.shiftKey;
         if (isSuperShift && keyEvent.code === 'Space') {
-          rfb.sendKey(Keysyms.XK_Super_L, 'MetaLeft', false);
+          rfb.sendKey(remoteSuperKeysym, remoteSuperCode, false);
           rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
           dismissPrefixPalette(); showPrefixPalette();
           api.log('noVNC VNC Shortcuts opened by Super+Shift+Space');
@@ -519,7 +665,12 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
           return true;
         }
         if (/^Key[A-Z]$/.test(keyEvent.code)) {
-          sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
+          handledHostKeyEvents.add(keyEvent);
+          if (forceRfb33 && !keyEvent.shiftKey && (keyEvent.code === 'KeyC' || keyEvent.code === 'KeyV')) {
+            sendSuperChord(keyEvent.key);
+          } else {
+            sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
+          }
           return true;
         }
         return false;
@@ -546,6 +697,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         };
       }
       const prefixHandler = (keyEvent) => {
+        if (isClipboardPasteEvent(keyEvent)) return;
+        if (handledHostKeyEvents.has(keyEvent)) return;
         // noVNC's browser keyboard synchronisation can consume a physical
         // Control press before the next key reaches the remote desktop.  Own
         // Ctrl+key chords here and send a complete press/release sequence.
@@ -563,7 +716,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         }
         if (keyEvent.metaKey && keyEvent.shiftKey && keyEvent.code === 'Space') {
           keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
-          rfb.sendKey(Keysyms.XK_Super_L, 'MetaLeft', false);
+          rfb.sendKey(remoteSuperKeysym, remoteSuperCode, false);
           rfb.sendKey(Keysyms.XK_Shift_L, 'ShiftLeft', false);
           dismissPrefixPalette(); showPrefixPalette();
           api.log('noVNC VNC Shortcuts opened by canvas Super+Shift+Space');
@@ -594,10 +747,16 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         return;
       };
       const ctrlHandler = (keyEvent) => {
+        if (isClipboardPasteEvent(keyEvent)) return;
+        if (handledHostKeyEvents.has(keyEvent)) return;
         if (keyEvent.type !== 'keydown' || !keyEvent.ctrlKey || keyEvent.shiftKey || !/^Key[A-Z]$/.test(keyEvent.code)) return;
         keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
         capturedControlKeys.add(keyEvent.code);
-        sendCtrlChord(keyEvent.key);
+        if (forceRfb33 && (keyEvent.code === 'KeyC' || keyEvent.code === 'KeyV')) {
+          sendSuperChord(keyEvent.key);
+        } else {
+          sendCtrlChord(keyEvent.key);
+        }
       };
       // The host capture on document owns the regular Ctrl+Shift path. Keep a
       // fallback only on document/canvas for WebViews that bypass it, but do
@@ -611,6 +770,24 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         target.addEventListener('keydown', ctrlHandler, true);
       }
       api.log('noVNC keyboard capture armed (document + canvas)');
+      const releaseRemotePointer = () => {
+        if (!rfb || !rfb._mouseButtonMask) return;
+        const position = rfb._mousePos || { x: 0, y: 0 };
+        rfb._mouseButtonMask = 0;
+        rfb._sendMouse(position.x, position.y, 0);
+        api.log('noVNC recovered a missing remote mouse-button release');
+      };
+      // Let noVNC process normal canvas mouseup first. The bubbling window
+      // listener is only a fallback when release occurs outside the canvas.
+      window.addEventListener('mouseup', releaseRemotePointer);
+      window.addEventListener('blur', releaseRemotePointer, true);
+      clipboardPaste.addEventListener('focus', releaseRemotePointer);
+      releaseRemotePointerCapture = () => {
+        window.removeEventListener('mouseup', releaseRemotePointer);
+        window.removeEventListener('blur', releaseRemotePointer, true);
+        clipboardPaste.removeEventListener('focus', releaseRemotePointer);
+        releaseRemotePointer();
+      };
       removePrefixListener = () => {
         for (const target of keyboardTargets) {
           target.removeEventListener('keydown', prefixHandler, true);
@@ -621,8 +798,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       requestAnimationFrame(() => {
         rfb.scaleViewport = true;
         zoom = fittedScale();
+        normalizePointerCoordinates();
         const details = reportFramebuffer('connected');
-        status.textContent = `Connected: ${event.detail?.name || 'VNC server'} (${details.framebuffer})`;
+        status.textContent = `Connected: ${event.detail?.name || 'VNC server'} (${details.framebuffer}) — clipboard sync is active.`;
       });
       window.setTimeout(() => {
         const details = reportFramebuffer('after connection');
@@ -631,8 +809,27 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         }
       }, 750);
     });
+    rfb.addEventListener('clipboard', async (event) => {
+      if (!clipboardSyncEnabled) return;
+      const text = clipboardText(event.detail?.text);
+      if (text === null) {
+        api.log('noVNC clipboard remote-to-local skipped text over 1048576 bytes');
+        return;
+      }
+      api.log(`noVNC clipboard remote event bytes=${new TextEncoder().encode(text || '').byteLength}`);
+      if (!text || text === lastRemoteClipboard) return;
+      try {
+        await api.writeClipboard(text);
+        lastRemoteClipboard = text;
+        status.textContent = 'Remote clipboard copied to the local clipboard.';
+        api.log(`noVNC clipboard remote-to-local synced bytes=${new TextEncoder().encode(text).byteLength}`);
+      } catch (error) {
+        api.log(`noVNC clipboard remote write failed: ${error}`);
+      }
+    });
     rfb.addEventListener('disconnect', (event) => {
-      removePrefixListener(); releaseHostKeyCapture(); dismissPrefixPalette();
+      stopClipboardSync();
+      removePrefixListener(); releaseHostKeyCapture(); releaseRemotePointerCapture(); dismissPrefixPalette();
       for (const modifier of heldModifiers.values()) setToggleAppearance(modifier.button, false);
       heldModifiers.clear();
       status.textContent = event.detail?.clean ? 'Disconnected.' : 'Connection closed unexpectedly. Check Plugin Activity.';

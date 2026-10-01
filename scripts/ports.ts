@@ -8,6 +8,17 @@ const root = path.resolve(__dirname, '..');
 const portsRoot = path.join(root, 'ports');
 const indexPath = path.join(root, 'INDEX');
 
+// INDEX points at immutable reviewed source commits, rather than mutable main.
+// Add a new current entry only after its port-source commit is available.
+const stableHistory: Record<string, { revision: string; previousVersion: string; previousRevision: string }> = {
+  'integration/novnc-local-bridge': {
+    revision: 'b525c5ef42ae140300363f4fb6be0dae8c6b189b', previousVersion: '1.0.0', previousRevision: 'e9e6c20e114da9d3d82e42ec1cf170c6eb3767d4',
+  },
+  'integration/rdp-local-bridge': {
+    revision: 'b525c5ef42ae140300363f4fb6be0dae8c6b189b', previousVersion: '0.1.0', previousRevision: 'e9e6c20e114da9d3d82e42ec1cf170c6eb3767d4',
+  },
+};
+
 type Port = Record<string, string> & {
   directory: string;
   manifestPath: string;
@@ -138,7 +149,13 @@ function portIndex() {
 
 // Uses a BSD Ports-style line-oriented format to keep the catalog compact.
 function serializedPortIndex() {
-  return portIndex().map((port) => [
+  return portIndex().map((port) => {
+    const history = stableHistory[port.id] || {
+      revision: 'b525c5ef42ae140300363f4fb6be0dae8c6b189b',
+      previousVersion: port.version,
+      previousRevision: 'e9e6c20e114da9d3d82e42ec1cf170c6eb3767d4',
+    };
+    return [
     port.id,
     port.name,
     port.version,
@@ -147,7 +164,11 @@ function serializedPortIndex() {
     port.license,
     port.minFpasotermVersion,
     port.installPath,
-  ].join('|')).join('\n') + '\n';
+    history.revision,
+    history.previousVersion,
+    history.previousRevision,
+  ].join('|');
+  }).join('\n') + '\n';
 }
 
 // Reads the compact local catalog that `sync` and `index` have already validated.
@@ -157,7 +178,7 @@ function readPortIndex() {
   }
   return fs.readFileSync(indexPath, 'utf8').split(/\r?\n/).filter(Boolean).map((line, number) => {
     const fields = line.split('|');
-    if (fields.length !== 8 || fields.some((field) => !field)) {
+    if (fields.length !== 11 || fields.some((field) => !field)) {
       throw new Error(`${indexPath}:${number + 1}: malformed INDEX record`);
     }
     const [id, name, version, author, description, license, minFpasotermVersion, installPath] = fields;

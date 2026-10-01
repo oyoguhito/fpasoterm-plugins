@@ -66,6 +66,35 @@ fpasoterm --plugin-install <category/name> --plugin-ports-dir . --enable
 fpasoterm does not replace a different existing plugin file unless
 `--force` is supplied. Review the source before using that option.
 
+### Use the binary built from the source under review
+
+`--plugin-ports-dir` is handled by the native fpasoterm binary, not by this
+repository's Node.js tools. A previously built `src-tauri/target/debug/fpasoterm`
+can therefore be older than the checked-out source and reject a valid port
+feature. Always confirm the binary before testing an updated port:
+
+```sh
+../fpasoterm/src-tauri/target/debug/fpasoterm --version
+```
+
+When working from a fpasoterm source checkout, force a current debug build and
+perform the install in the same invocation:
+
+```sh
+cd ../fpasoterm
+bin/fpasoterm --dev --foreground \
+  --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/rdp-local-bridge --force
+```
+
+The expected version must be the checked-out fpasoterm version (for example,
+`1.6.10`), not an earlier release. Large reviewed WebAssembly ports may declare
+`maxSourceBytes` up to 8 MiB in `port.toml`; install them by port ID as above.
+Do **not** use `--plugin-install-file` for those ports, because arbitrary local
+files retain the 1 MiB limit by design. Use the packaged `fpasoterm` executable
+for release testing; it must be rebuilt or reinstalled after application source
+changes.
+
 ### Port automation scripts
 
 Do not add generic port-specific names such as `build:<name>` to the root

@@ -5,6 +5,10 @@ const path = require('node:path');
 const { build } = require('./build-novnc-port');
 
 const target = process.argv[2] || '';
+const compatibility = process.argv[3] || '';
+if (process.argv.length > 4 || (compatibility && compatibility !== '--rfb-3.3')) {
+  throw new Error('usage: npm run port:integration:novnc-local-bridge:configure -- tcp://host:port [--rfb-3.3]');
+}
 if (!/^(?:tcp|tls):\/\/(?:\[[^\]/?#@\s]+\]|[^\/:?#@\s]+):[1-9]\d{0,4}$/.test(target)) {
   throw new Error('usage: npm run port:integration:novnc-local-bridge:configure -- tcp://host:port (or tls://host:port)');
 }
@@ -17,10 +21,18 @@ const targetPattern = /openVncBridge\(\{ target: '(?:tcp|tls):\/\/[^']+' \}\)/;
 if (!targetPattern.test(source)) {
   throw new Error('noVNC entry does not contain a configurable strict target');
 }
-const updated = source.replace(
+const targetUpdated = source.replace(
   targetPattern,
   `openVncBridge({ target: '${target}' })`,
 );
+const compatibilityPattern = /const forceRfb33 = (?:true|false);/;
+if (!compatibilityPattern.test(targetUpdated)) {
+  throw new Error('noVNC entry does not contain a configurable RFB compatibility mode');
+}
+const updated = targetUpdated.replace(
+  compatibilityPattern,
+  `const forceRfb33 = ${compatibility === '--rfb-3.3'};`,
+);
 if (updated !== source) fs.writeFileSync(entry, updated);
 build();
-console.log(`${updated === source ? 'kept' : 'configured'} noVNC verification port for ${target}`);
+console.log(`${updated === source ? 'kept' : 'configured'} noVNC verification port for ${target}${compatibility === '--rfb-3.3' ? ' with RFB 3.3 compatibility' : ''}`);

@@ -1,7 +1,7 @@
 [port]
 id = "integration/rdp-local-bridge"
 name = "rdp-local-bridge"
-version = "0.1.0"
+version = "0.1.1"
 author = "oyoguhito"
 description = "Prototype IronRDP WebAssembly client for a strictly declared local RDP bridge."
 license = "MIT"

@@ -1,6 +1,6 @@
-// @fpasoterm-plugin version: 1.0.0
+// @fpasoterm-plugin version: 1.0.1
 // @fpasoterm-plugin description: Verification noVNC client for the strictly declared local TCP bridge.
-// @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:59999
+// @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:5900
 (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -17538,7 +17538,10 @@
   var import_rfb = __toESM(require_rfb());
   var import_keysym = __toESM(require_keysym());
   var api = window.fpasotermPluginApi;
+  var forceRfb33 = false;
   api.registerCommand("novnc-local-bridge", "Open noVNC local bridge (test)", async () => {
+    const remoteSuperKeysym = forceRfb33 ? import_keysym.default.XK_Alt_L : import_keysym.default.XK_Super_L;
+    const remoteSuperCode = forceRfb33 ? "AltLeft" : "MetaLeft";
     const overlay = api.openElementOverlay({ title: "noVNC local bridge (test)", width: 1100, height: 720 });
     const status = document.createElement("p");
     const toolbar = document.createElement("div");
@@ -17550,6 +17553,8 @@
     const panUp = document.createElement("button");
     const panDown = document.createElement("button");
     const panRight = document.createElement("button");
+    const metaNext = document.createElement("button");
+    const clipboardPaste = document.createElement("textarea");
     const control = document.createElement("button");
     const alt = document.createElement("button");
     const shift = document.createElement("button");
@@ -17576,7 +17581,8 @@
       [panLeft, "\u2190"],
       [panUp, "\u2191"],
       [panDown, "\u2193"],
-      [panRight, "\u2192"]
+      [panRight, "\u2192"],
+      [metaNext, "Command / Windows"]
     ]) {
       button.type = "button";
       button.textContent = label;
@@ -17587,9 +17593,16 @@
     panDown.title = "Pan down";
     panRight.title = "Pan right";
     overview.title = "Show a clickable overview of the complete remote desktop";
-    toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight);
+    metaNext.title = "Apply the remote Command/Windows modifier to the next key only";
+    toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext);
+    clipboardPaste.rows = 3;
+    clipboardPaste.placeholder = "Local \u2192 VNC: click here, then press Ctrl+V";
+    clipboardPaste.title = "Uses a user-initiated paste event when this WebView blocks clipboard reads";
+    clipboardPaste.spellcheck = false;
+    clipboardPaste.disabled = true;
+    clipboardPaste.style.cssText = "box-sizing:border-box;flex:0 0 auto;width:100%;min-height:4.5em;resize:vertical";
     screen.append(panCapture, navigator2);
-    overlay.element.replaceChildren(toolbar, screen);
+    overlay.element.replaceChildren(toolbar, screen, clipboardPaste);
     status.textContent = "Waiting for connection confirmation\u2026";
     let rfb;
     let connected = false;
@@ -17603,18 +17616,101 @@
     };
     let releaseHostKeyCapture = () => {
     };
+    let releaseRemotePointerCapture = () => {
+    };
     let pausedPointerHandlers = null;
     let paletteViewOnly = null;
     let pausedSendMouse = null;
     let ctrlBPrefixUntil = 0;
     let suppressCtrlBPrefixKeyup = false;
+    const handledHostKeyEvents = /* @__PURE__ */ new WeakSet();
+    const maxClipboardBytes = 1024 * 1024;
+    let clipboardSyncEnabled = false;
+    let lastRemoteClipboard = "";
+    let remotePasteTimer = null;
+    let metaNextArmed = false;
+    const clipboardText = (value) => {
+      const text = String(value || "");
+      return new TextEncoder().encode(text).byteLength <= maxClipboardBytes ? text : null;
+    };
+    const stopClipboardSync = () => {
+      clipboardSyncEnabled = false;
+      clipboardPaste.disabled = true;
+      if (remotePasteTimer !== null) {
+        window.clearTimeout(remotePasteTimer);
+        remotePasteTimer = null;
+      }
+    };
+    clipboardPaste.addEventListener("paste", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!clipboardSyncEnabled || !connected || !rfb) return;
+      const text = clipboardText(event.clipboardData?.getData("text/plain") || "");
+      if (text === null) {
+        api.log("noVNC clipboard local-to-remote skipped text over 1048576 bytes");
+        return;
+      }
+      if (!text) {
+        api.log("noVNC clipboard paste event contained no plain text");
+        return;
+      }
+      rfb.clipboardPasteFrom(text);
+      clipboardPaste.value = text;
+      const transport = clipboardTransport();
+      if (forceRfb33) {
+        if (remotePasteTimer !== null) window.clearTimeout(remotePasteTimer);
+        status.textContent = "Local clipboard sent to Vine Server; waiting for the remote pasteboard\u2026";
+        remotePasteTimer = window.setTimeout(() => {
+          remotePasteTimer = null;
+          if (!clipboardSyncEnabled || !connected || !rfb) return;
+          rfb.focus();
+          sendSuperChord("v");
+          status.textContent = "Local clipboard sent to Vine Server and remote Command+V issued.";
+        }, 400);
+      } else {
+        status.textContent = transport.mode === "legacy" ? "Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and use the remote platform paste shortcut; server-side clipboard support may be required." : "Local clipboard sent to VNC. Click the desktop and use the remote platform paste shortcut.";
+      }
+      api.log(`noVNC clipboard local-to-remote announced bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(",") || "none"} actions=${transport.actions.join(",") || "none"}`);
+    });
+    const isClipboardPasteEvent = (event) => event.target === clipboardPaste || document.activeElement === clipboardPaste || event.composedPath?.().includes(clipboardPaste);
     const heldModifiers = /* @__PURE__ */ new Map();
     const setToggleAppearance = (button, enabled) => {
       button.setAttribute("aria-pressed", String(enabled));
       button.style.background = enabled ? "#2d7d46" : "#263b4e";
     };
+    const setMetaNextArmed = (enabled) => {
+      metaNextArmed = enabled;
+      setToggleAppearance(metaNext, enabled);
+      status.textContent = enabled ? "Command / Windows armed for the next key." : "Command / Windows modifier cancelled.";
+    };
     const display = () => rfb?._display;
     const viewport = () => display()?._viewportLoc;
+    const clipboardTransport = () => {
+      const formats = Object.keys(rfb?._clipboardServerCapabilitiesFormats || {});
+      const actions = Object.keys(rfb?._clipboardServerCapabilitiesActions || {}).filter(
+        (key) => rfb._clipboardServerCapabilitiesActions[key]
+      );
+      return { mode: formats.length && actions.length ? "extended" : "legacy", formats, actions };
+    };
+    const normalizePointerCoordinates = () => {
+      const remote = display();
+      const canvas = rfb?._canvas;
+      if (!remote || !canvas) return;
+      remote.absX = (x) => {
+        const bounds2 = canvas.getBoundingClientRect();
+        const width = Math.max(1, bounds2.width);
+        const pointerOffsetX = 16;
+        return Math.max(0, Math.min(remote.width - 1, Math.floor(x / width * canvas.width + remote._viewportLoc.x + pointerOffsetX)));
+      };
+      remote.absY = (y) => {
+        const bounds2 = canvas.getBoundingClientRect();
+        const height = Math.max(1, bounds2.height);
+        const pointerOffsetY = forceRfb33 ? 8 : 0;
+        return Math.max(0, Math.min(remote.height - 1, Math.floor(y / height * canvas.height + remote._viewportLoc.y + pointerOffsetY)));
+      };
+      const bounds = canvas.getBoundingClientRect();
+      api.log(`noVNC pointer mapping normalized css=${Math.round(bounds.width)}x${Math.round(bounds.height)} pixels=${canvas.width}x${canvas.height} scale=${remote.scale}`);
+    };
     const fittedScale = () => {
       const remote = display();
       if (!remote?.width || !remote?.height) return 1;
@@ -17710,7 +17806,7 @@
     const sendSuperChord = (character, includeShift = false) => {
       const lower = character.toLowerCase();
       const code = /^[a-z]$/i.test(lower) ? `Key${lower.toUpperCase()}` : `Digit${lower}`;
-      const modifiers = [{ keysym: import_keysym.default.XK_Super_L, code: "MetaLeft" }];
+      const modifiers = [{ keysym: remoteSuperKeysym, code: remoteSuperCode }];
       if (includeShift) modifiers.push({ keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" });
       sendChord(modifiers, lower, code);
       api.log(`noVNC physical shortcut sent: Super${includeShift ? "+Shift" : ""}+${lower}`);
@@ -17719,7 +17815,7 @@
     const sendSuperShiftB = () => {
       if (!rfb) return;
       sendChord([
-        { keysym: import_keysym.default.XK_Super_L, code: "MetaLeft" },
+        { keysym: remoteSuperKeysym, code: remoteSuperCode },
         { keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" }
       ], "b", "KeyB");
       api.log("noVNC shortcut sent: Super+Shift+b (client Ctrl+Shift+b)");
@@ -17797,7 +17893,7 @@
       control.onclick = () => toggleModifier(control, "Control", import_keysym.default.XK_Control_L, "ControlLeft");
       alt.onclick = () => toggleModifier(alt, "Alt", import_keysym.default.XK_Alt_L, "AltLeft");
       shift.onclick = () => toggleModifier(shift, "Shift", import_keysym.default.XK_Shift_L, "ShiftLeft");
-      superKey.onclick = () => toggleModifier(superKey, "Super", import_keysym.default.XK_Super_L, "MetaLeft");
+      superKey.onclick = () => toggleModifier(superKey, "Super", remoteSuperKeysym, remoteSuperCode);
       escapeButton.onclick = () => {
         sendChord([], "", "Escape", import_keysym.default.XK_Escape);
         api.log("noVNC palette key sent: Escape");
@@ -17864,6 +17960,10 @@
       zoom = Math.min(2.5, zoom + 0.1);
       applyZoom();
     });
+    metaNext.addEventListener("click", () => {
+      setMetaNextArmed(!metaNextArmed);
+      rfb?.focus();
+    });
     fit.addEventListener("click", () => {
       if (rfb) {
         rfb.clipViewport = false;
@@ -17926,7 +18026,7 @@
     panCapture.addEventListener("pointerup", stopDragPan);
     panCapture.addEventListener("pointercancel", stopDragPan);
     try {
-      const bridgeUrl = await api.openVncBridge({ target: "tcp://127.0.0.1:59999" });
+      const bridgeUrl = await api.openVncBridge({ target: "tcp://127.0.0.1:5900" });
       status.textContent = "Connecting to the configured verification target through the local bridge\u2026";
       const username = await api.promptText({
         title: "VNC username",
@@ -17947,11 +18047,20 @@
         return;
       }
       rfb = new import_rfb.default(screen, bridgeUrl, { credentials: { username, password } });
+      if (forceRfb33) {
+        rfb._rfbMaxVersion = 3.3;
+        rfb._sendEncodings = function sendVineEncodings() {
+          import_rfb.default.messages.clientEncodings(this._sock, [5, 0]);
+        };
+        api.log("noVNC compatibility: forcing RFB 3.3 with Hextile/Raw for Vine Server");
+      }
       rfb.scaleViewport = true;
       rfb.resizeSession = false;
       reportFramebuffer("RFB created");
       rfb.addEventListener("connect", (event) => {
         connected = true;
+        clipboardSyncEnabled = true;
+        clipboardPaste.disabled = false;
         api.dismissPrompts();
         status.textContent = `Connected: ${event.detail?.name || "VNC server"}; waiting for remote framebuffer\u2026`;
         rfb.focus();
@@ -17960,9 +18069,20 @@
         releaseHostKeyCapture();
         const capturedControlKeys = /* @__PURE__ */ new Set();
         const handleHostCtrlKey = (keyEvent) => {
+          if (isClipboardPasteEvent(keyEvent)) return false;
+          if (metaNextArmed && keyEvent.type === "keydown" && /^[a-z0-9]$/i.test(keyEvent.key)) {
+            keyEvent.preventDefault();
+            keyEvent.stopImmediatePropagation();
+            const character = keyEvent.key.toLowerCase();
+            const code = /^[a-z]$/i.test(character) ? `Key${character.toUpperCase()}` : `Digit${character}`;
+            setMetaNextArmed(false);
+            sendChord([{ keysym: remoteSuperKeysym, code: remoteSuperCode }], character, code);
+            status.textContent = `Command / Windows+${character} sent.`;
+            return true;
+          }
           const isSuperShift = keyEvent.metaKey && keyEvent.shiftKey;
           if (isSuperShift && keyEvent.code === "Space") {
-            rfb.sendKey(import_keysym.default.XK_Super_L, "MetaLeft", false);
+            rfb.sendKey(remoteSuperKeysym, remoteSuperCode, false);
             rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
             dismissPrefixPalette();
             showPrefixPalette();
@@ -18041,7 +18161,12 @@
             return true;
           }
           if (/^Key[A-Z]$/.test(keyEvent.code)) {
-            sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
+            handledHostKeyEvents.add(keyEvent);
+            if (forceRfb33 && !keyEvent.shiftKey && (keyEvent.code === "KeyC" || keyEvent.code === "KeyV")) {
+              sendSuperChord(keyEvent.key);
+            } else {
+              sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
+            }
             return true;
           }
           return false;
@@ -18069,6 +18194,8 @@
           };
         }
         const prefixHandler = (keyEvent) => {
+          if (isClipboardPasteEvent(keyEvent)) return;
+          if (handledHostKeyEvents.has(keyEvent)) return;
           if (keyEvent.type === "keyup") {
             if (keyEvent.code === "ControlLeft" || keyEvent.code === "ControlRight" || capturedControlKeys.delete(keyEvent.code)) {
               keyEvent.preventDefault();
@@ -18085,7 +18212,7 @@
           if (keyEvent.metaKey && keyEvent.shiftKey && keyEvent.code === "Space") {
             keyEvent.preventDefault();
             keyEvent.stopImmediatePropagation();
-            rfb.sendKey(import_keysym.default.XK_Super_L, "MetaLeft", false);
+            rfb.sendKey(remoteSuperKeysym, remoteSuperCode, false);
             rfb.sendKey(import_keysym.default.XK_Shift_L, "ShiftLeft", false);
             dismissPrefixPalette();
             showPrefixPalette();
@@ -18122,11 +18249,17 @@
           return;
         };
         const ctrlHandler = (keyEvent) => {
+          if (isClipboardPasteEvent(keyEvent)) return;
+          if (handledHostKeyEvents.has(keyEvent)) return;
           if (keyEvent.type !== "keydown" || !keyEvent.ctrlKey || keyEvent.shiftKey || !/^Key[A-Z]$/.test(keyEvent.code)) return;
           keyEvent.preventDefault();
           keyEvent.stopImmediatePropagation();
           capturedControlKeys.add(keyEvent.code);
-          sendCtrlChord(keyEvent.key);
+          if (forceRfb33 && (keyEvent.code === "KeyC" || keyEvent.code === "KeyV")) {
+            sendSuperChord(keyEvent.key);
+          } else {
+            sendCtrlChord(keyEvent.key);
+          }
         };
         const keyboardCanvas = rfb._canvas;
         const keyboardTargets = [document, keyboardCanvas];
@@ -18136,6 +18269,22 @@
           target.addEventListener("keydown", ctrlHandler, true);
         }
         api.log("noVNC keyboard capture armed (document + canvas)");
+        const releaseRemotePointer = () => {
+          if (!rfb || !rfb._mouseButtonMask) return;
+          const position = rfb._mousePos || { x: 0, y: 0 };
+          rfb._mouseButtonMask = 0;
+          rfb._sendMouse(position.x, position.y, 0);
+          api.log("noVNC recovered a missing remote mouse-button release");
+        };
+        window.addEventListener("mouseup", releaseRemotePointer);
+        window.addEventListener("blur", releaseRemotePointer, true);
+        clipboardPaste.addEventListener("focus", releaseRemotePointer);
+        releaseRemotePointerCapture = () => {
+          window.removeEventListener("mouseup", releaseRemotePointer);
+          window.removeEventListener("blur", releaseRemotePointer, true);
+          clipboardPaste.removeEventListener("focus", releaseRemotePointer);
+          releaseRemotePointer();
+        };
         removePrefixListener = () => {
           for (const target of keyboardTargets) {
             target.removeEventListener("keydown", prefixHandler, true);
@@ -18146,8 +18295,9 @@
         requestAnimationFrame(() => {
           rfb.scaleViewport = true;
           zoom = fittedScale();
+          normalizePointerCoordinates();
           const details = reportFramebuffer("connected");
-          status.textContent = `Connected: ${event.detail?.name || "VNC server"} (${details.framebuffer})`;
+          status.textContent = `Connected: ${event.detail?.name || "VNC server"} (${details.framebuffer}) \u2014 clipboard sync is active.`;
         });
         window.setTimeout(() => {
           const details = reportFramebuffer("after connection");
@@ -18156,9 +18306,29 @@
           }
         }, 750);
       });
+      rfb.addEventListener("clipboard", async (event) => {
+        if (!clipboardSyncEnabled) return;
+        const text = clipboardText(event.detail?.text);
+        if (text === null) {
+          api.log("noVNC clipboard remote-to-local skipped text over 1048576 bytes");
+          return;
+        }
+        api.log(`noVNC clipboard remote event bytes=${new TextEncoder().encode(text || "").byteLength}`);
+        if (!text || text === lastRemoteClipboard) return;
+        try {
+          await api.writeClipboard(text);
+          lastRemoteClipboard = text;
+          status.textContent = "Remote clipboard copied to the local clipboard.";
+          api.log(`noVNC clipboard remote-to-local synced bytes=${new TextEncoder().encode(text).byteLength}`);
+        } catch (error) {
+          api.log(`noVNC clipboard remote write failed: ${error}`);
+        }
+      });
       rfb.addEventListener("disconnect", (event) => {
+        stopClipboardSync();
         removePrefixListener();
         releaseHostKeyCapture();
+        releaseRemotePointerCapture();
         dismissPrefixPalette();
         for (const modifier of heldModifiers.values()) setToggleAppearance(modifier.button, false);
         heldModifiers.clear();

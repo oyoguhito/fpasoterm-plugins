@@ -86,11 +86,37 @@ successful connection changes the overlay status to `Connected: WIDTH ×
 HEIGHT`; cancel, a refused connection, or invalid credentials leave a visible
 failure status and do not persist credentials.
 
+## Clipboard
+
+Plain-text clipboard redirection is active for the lifetime of each connected
+RDP session and stops when the overlay closes. Incoming remote text is copied to
+fpasoterm's shared WebView/OS clipboard. For local-to-remote transfer, focus the
+multi-line **Local → RDP** text area and press Ctrl+V. The resulting user-initiated paste event
+is announced as `text/plain`; then focus the RDP desktop and press Ctrl+V there.
+This two-step flow avoids WebView programmatic-read restrictions, prevents a
+partially forwarded shortcut from leaving remote modifier keys inconsistent,
+and avoids polling that can interfere with remote input. Clipboard
+contents remain only in the connection-scoped UI and memory, are not logged or
+persisted, and ignore HTML/files/binary formats and text over 1 MiB. Verify with
+disposable text in both directions before relying on it.
+
+Some WebView platforms deny programmatic clipboard reads even after a button
+click. The explicit Ctrl+V field supplies text through the browser paste event
+instead and does not require that permission. The status line immediately
+reports local transfer and remote copy progress. Remote-to-local synchronization
+remains automatic for the connected session.
+
 ## Interaction and cross-platform verification
 
 After the status changes to `Connected`, click inside the remote desktop before
 typing. The port forwards keyboard, pointer, button, and wheel events only from
 the RDP canvas, so fpasoterm shortcuts outside the overlay remain available.
+Pointer movement is coalesced to one update per browser animation frame so
+high-DPI mice and touchpads do not starve remote desktop canvas rendering.
+The prototype requests a 1280 × 720 remote desktop. Reducing the negotiated
+desktop size was tested but reverted because some servers stopped after a
+partial initial desktop update. Input-event coalescing remains enabled because
+it reduces UI-thread pressure without changing the negotiated framebuffer.
 
 ChromeOS (Crostini) verification passed on 2026-09-23. Before publishing for
 another OS, record the OS version, window system, browser engine, and RDP
@@ -102,13 +128,13 @@ server in the pull-request test notes and perform the following checks:
    a window in both directions.
 3. Type ASCII text, then test Backspace, Enter, arrow keys, and a modifier
    shortcut appropriate for a disposable remote test account.
-4. Disconnect from the RDP overlay, close it, and confirm that fpasoterm input
-   and shortcuts still work normally.
+4. Close the RDP overlay and confirm that its session is shut down and fpasoterm
+   input and shortcuts still work normally.
 
 The current prototype maps common browser keys to PS/2 Set 1 scancodes for
-IronRDP. Non-US layouts, IME composition, touch input, clipboard redirection,
-and certificate pinning require separate compatibility work; do not mark them
-as supported without an OS-specific test.
+IronRDP. Non-US layouts, IME composition, touch input, clipboard formats other
+than bounded plain text, and certificate pinning require separate compatibility
+work; do not mark them as supported without an OS-specific test.
 
 For a compatibility-only check against a specific development binary, run:
 
