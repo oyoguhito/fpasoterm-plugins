@@ -12,7 +12,7 @@ const indexPath = path.join(root, 'INDEX');
 // Add a new current entry only after its port-source commit is available.
 const stableHistory: Record<string, { revision: string; previousVersion: string; previousRevision: string }> = {
   'integration/terminal-browser-helper': {
-    revision: '741224cc91cfee9b45cb9b2bd32dbbee07379f8f', previousVersion: '1.0.0', previousRevision: '741224cc91cfee9b45cb9b2bd32dbbee07379f8f',
+    revision: 'd1ade225dbddd43e9187ca002ccdf8681879bbfe', previousVersion: '1.0.0', previousRevision: '741224cc91cfee9b45cb9b2bd32dbbee07379f8f',
   },
   'integration/novnc-local-bridge': {
     revision: 'b525c5ef42ae140300363f4fb6be0dae8c6b189b', previousVersion: '1.0.0', previousRevision: 'e9e6c20e114da9d3d82e42ec1cf170c6eb3767d4',
