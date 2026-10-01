@@ -1,7 +1,7 @@
 [port]
 id = "integration/terminal-browser-helper"
 name = "terminal-browser-helper"
-version = "1.0.0"
+version = "1.0.1"
 author = "oyoguhito"
 description = "Prepares a reviewed terminal-browser command for the current tmux or herdr pane without executing it."
 license = "MIT"

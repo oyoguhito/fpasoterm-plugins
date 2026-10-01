@@ -1,5 +1,5 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.0.0
+// @fpasoterm-plugin version: 1.0.1
 // @fpasoterm-plugin description: Prepares a reviewed terminal-browser command for the current tmux or herdr pane.
 
 const api = window.fpasotermPluginApi;
@@ -23,6 +23,9 @@ function terminalBrowserUrl(value) {
 
 api.log('integration/terminal-browser-helper loaded');
 api.registerCommand('terminal-browser-helper.insert', 'Insert terminal-browser command', async () => {
+  if (!api.capabilities.terminalGraphics) {
+    throw new Error('terminal-browser is blocked because this fpasoterm build has no safe terminal graphics renderer. Use an external supported terminal; the command was not inserted.');
+  }
   const value = await api.promptText({
     title: 'terminal-browser URL',
     message: 'Enter an HTTP(S) URL. The command is inserted into the current pane but is not executed.',

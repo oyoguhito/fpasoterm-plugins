@@ -23,8 +23,10 @@ Requirements and current limits:
 - terminal-browser still needs a terminal graphics protocol supported by the
   host terminal. Current fpasoterm builds intentionally disable Kitty/SIXEL/
   iTerm image rendering because the available xterm image addon can freeze the
-  Tauri/WebKitGTK WebView on ChromeOS. On that platform this helper prepares a
-  command correctly, but the browser image is not yet expected to render.
+  Tauri/WebKitGTK WebView on ChromeOS. The helper checks
+  `capabilities.terminalGraphics` and refuses to insert the command when it is
+  disabled, preventing the known WebView freeze. Use terminal-browser from an
+  external supported terminal in that case.
 - The plugin does not use terminal-browser's private daemon socket or CDP
   database. Those are not public stable APIs in terminal-browser 0.5.3.
 

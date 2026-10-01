@@ -73,6 +73,8 @@ const terminalBrowserHelperSource = fs.readFileSync(
   'utf8',
 );
 assert.match(terminalBrowserHelperSource, /api\.insertTerminalText/);
+assert.match(terminalBrowserHelperSource, /api\.capabilities\.terminalGraphics/);
+assert.match(terminalBrowserHelperSource, /terminal-browser is blocked because this fpasoterm build has no safe terminal graphics renderer/);
 assert.match(terminalBrowserHelperSource, /terminal-browser open/);
 assert.match(terminalBrowserHelperSource, /url\.protocol !== 'http:' && url\.protocol !== 'https:'/);
 assert.doesNotMatch(terminalBrowserHelperSource, /--split|openWebPanel|fetch\s*\(/);
@@ -133,6 +135,7 @@ assert.match(pluginApiDeclaration, /system trust roots[\s\S]*openVncBridge:/);
 assert.match(pluginApiDeclaration, /RDCleanPath[\s\S]*openRdpBridge:/);
 assert.match(pluginApiDeclaration, /tcp:\/\/host:port[\s\S]*openRdpBridge:/);
 assert.match(pluginApiDeclaration, /insertTerminalText:/);
+assert.match(pluginApiDeclaration, /terminalGraphics: boolean/);
 const vncReadme = fs.readFileSync(
   path.join(root, 'ports', 'integration', 'novnc-local-bridge', 'README.md'),
   'utf8',

@@ -2,6 +2,10 @@
 // Keep this file compatible with the minimum API version declared by each port.
 type FpasotermPluginApi = {
   version: string;
+  capabilities: {
+    /** True only when a safe terminal graphics renderer is active. */
+    terminalGraphics: boolean;
+  };
   terminal: {
     options: Record<string, unknown>;
     write: (data: string) => void;
