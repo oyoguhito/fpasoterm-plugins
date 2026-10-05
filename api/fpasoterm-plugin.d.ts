@@ -41,6 +41,8 @@ type FpasotermPluginApi = {
   writeClipboard: (text: string) => Promise<void>;
   /** Inserts printable text into the active PTY without pressing Enter. */
   insertTerminalText: (text: string) => void;
+  /** Sends one reviewed named shortcut; arbitrary control sequences are rejected. */
+  sendTerminalShortcut: (shortcut: 'terminal-browser-zoom-out' | 'terminal-browser-zoom-in' | 'terminal-browser-zoom-reset' | 'terminal-browser-zoom-50') => void;
   /** Opens an HTTP(S) URL in the external browser after an explicit user action. */
   openExternalUrl: (url: string) => Promise<void>;
   /**
