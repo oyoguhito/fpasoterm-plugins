@@ -2,6 +2,10 @@
 // Keep this file compatible with the minimum API version declared by each port.
 type FpasotermPluginApi = {
   version: string;
+  capabilities: {
+    /** True only when a safe terminal graphics renderer is active. */
+    terminalGraphics: boolean;
+  };
   terminal: {
     options: Record<string, unknown>;
     write: (data: string) => void;
@@ -35,6 +39,10 @@ type FpasotermPluginApi = {
   readClipboard: () => Promise<string>;
   /** Writes plain UTF-8 text through fpasoterm's shared WebView and OS clipboard path. */
   writeClipboard: (text: string) => Promise<void>;
+  /** Inserts printable text into the active PTY without pressing Enter. */
+  insertTerminalText: (text: string) => void;
+  /** Sends one reviewed named shortcut; arbitrary control sequences are rejected. */
+  sendTerminalShortcut: (shortcut: 'terminal-browser-zoom-out' | 'terminal-browser-zoom-in' | 'terminal-browser-zoom-reset' | 'terminal-browser-zoom-50') => void;
   /** Opens an HTTP(S) URL in the external browser after an explicit user action. */
   openExternalUrl: (url: string) => Promise<void>;
   /**

@@ -20,7 +20,7 @@ assert.doesNotMatch(portsSource, /command === 'install'/);
 assert.doesNotMatch(portsSource, /command === 'update'/);
 assert.doesNotMatch(portsSource, /command === 'uninstall'/);
 const ports = portsApi.discoverPorts();
-assert.equal(portsApi.readPortIndex().length, 16);
+assert.equal(portsApi.readPortIndex().length, 17);
 for (const identifier of [
   'appearance/amber',
   'terminal/hello',
@@ -38,6 +38,7 @@ for (const identifier of [
   'productivity/clipboard-translate',
   'productivity/session-marker',
   'integration/rdp-local-bridge',
+  'integration/terminal-browser-helper',
 ]) {
   assert.ok(ports.some((port) => port.id === identifier));
 }
@@ -47,7 +48,7 @@ assert.deepEqual(
   portsApi.selectPorts('terminal/hello,terminal/welcome-banner').map((port) => port.id),
   ['terminal/hello', 'terminal/welcome-banner'],
 );
-assert.equal(portsApi.selectPorts('all', true).length, 16);
+assert.equal(portsApi.selectPorts('all', true).length, 17);
 assert.throws(() => portsApi.selectPorts('all,terminal/hello', true), /must be used alone/);
 assert.deepEqual(
   portsApi.searchPorts('WELCOME').map((port) => port.id),
@@ -63,7 +64,42 @@ assert.deepEqual(portsApi.searchPorts('doom').map((port) => port.id), [
   'integration/doom-wad-inspector',
   'integration/doom-wasm-local',
 ]);
-assert.equal(portsApi.searchPorts('oyoguhito').length, 16);
+assert.equal(portsApi.searchPorts('oyoguhito').length, 17);
+assert.deepEqual(portsApi.searchPorts('terminal-browser').map((port) => port.id), [
+  'integration/terminal-browser-helper',
+]);
+const terminalBrowserHelperSource = fs.readFileSync(
+  path.join(root, 'ports', 'integration', 'terminal-browser-helper', 'plugin.ts'),
+  'utf8',
+);
+assert.match(terminalBrowserHelperSource, /api\.insertTerminalText/);
+assert.match(terminalBrowserHelperSource, /api\.capabilities\.terminalGraphics/);
+assert.match(terminalBrowserHelperSource, /terminal-browser is blocked because this fpasoterm build has no safe terminal graphics renderer/);
+assert.match(terminalBrowserHelperSource, /terminal-browser open/);
+assert.match(terminalBrowserHelperSource, /1006l.*1016l.*1003l.*1002l.*1000l.*1004l.*2004l.*1049l/);
+assert.match(terminalBrowserHelperSource, /trapped post-exit terminal recovery/);
+assert.match(terminalBrowserHelperSource, /TERMINAL_BROWSER_PRESENT=full/);
+assert.match(terminalBrowserHelperSource, /PIXEL_FPS=15/);
+assert.match(terminalBrowserHelperSource, /HERDR_PANE_ID/);
+assert.match(terminalBrowserHelperSource, /Herdr Kitty pass-through is currently unsupported/);
+assert.match(terminalBrowserHelperSource, /Run this command in a direct fpasoterm shell/);
+assert.doesNotMatch(terminalBrowserHelperSource, /terminal_browser_fps=1/);
+assert.doesNotMatch(terminalBrowserHelperSource, /--split/);
+assert.match(terminalBrowserHelperSource, /SOMMELIER_VERSION/);
+assert.match(terminalBrowserHelperSource, /WAYLAND_DISPLAY= XDG_SESSION_TYPE=x11/);
+assert.match(terminalBrowserHelperSource, /trap terminal_browser_cleanup EXIT/);
+assert.match(terminalBrowserHelperSource, /const guard = .*HERDR_PANE_ID[\s\S]*:; else/);
+assert.doesNotMatch(terminalBrowserHelperSource, /HERDR_PANE_ID[\s\S]{0,300}false/);
+assert.match(terminalBrowserHelperSource, /printf '%s\\\\n'/);
+assert.match(terminalBrowserHelperSource, /`\$\{guard\} \$\{cleanup\}; trap terminal_browser_cleanup EXIT/);
+assert.match(terminalBrowserHelperSource, /stty sane/);
+assert.doesNotMatch(terminalBrowserHelperSource, /TERMINAL_BROWSER_DISABLE_GPU/);
+assert.match(terminalBrowserHelperSource, /Ctrl\+Q to return/);
+assert.match(terminalBrowserHelperSource, /title-bar − \/ Zoom \/ ＋ controls/);
+assert.doesNotMatch(terminalBrowserHelperSource, /terminal-browser-helper\.zoom-/);
+assert.match(terminalBrowserHelperSource, /url\.protocol !== 'http:' && url\.protocol !== 'https:'/);
+assert.doesNotMatch(terminalBrowserHelperSource, /--split|openWebPanel|fetch\s*\(/);
+assert.doesNotThrow(() => new Function(terminalBrowserHelperSource));
 const doomWadInspectorSource = fs.readFileSync(
   path.join(root, 'ports', 'integration', 'doom-wad-inspector', 'plugin.ts'),
   'utf8',
@@ -119,6 +155,8 @@ assert.match(pluginApiDeclaration, /allowed-tcp-targets[\s\S]*openVncBridge:/);
 assert.match(pluginApiDeclaration, /system trust roots[\s\S]*openVncBridge:/);
 assert.match(pluginApiDeclaration, /RDCleanPath[\s\S]*openRdpBridge:/);
 assert.match(pluginApiDeclaration, /tcp:\/\/host:port[\s\S]*openRdpBridge:/);
+assert.match(pluginApiDeclaration, /insertTerminalText:/);
+assert.match(pluginApiDeclaration, /terminalGraphics: boolean/);
 const vncReadme = fs.readFileSync(
   path.join(root, 'ports', 'integration', 'novnc-local-bridge', 'README.md'),
   'utf8',
@@ -262,7 +300,7 @@ assert.throws(
   /must be a public name or GitHub account/,
 );
 ports.forEach(portsApi.validatePort);
-assert.equal(ports.length, 16);
+assert.equal(ports.length, 17);
 assert.doesNotThrow(() => portsApi.assertPortIndexCurrent());
 assert.equal(portsApi.normalizeIndexLineEndings('one\r\ntwo\rthree\n'), 'one\ntwo\nthree\n');
 assert.equal(typeof portsApi.syncCheckout, 'function');
