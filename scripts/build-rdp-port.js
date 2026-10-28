@@ -11,7 +11,8 @@ const usage = `Usage:
   npm run port:integration:rdp-local-bridge:build
   FPASOTERM_RDP_TARGET=tcp://host:3389 npm run port:integration:rdp-local-bridge:build
 
-The target must be one exact tcp://host:port or tls://host:port URL.
+The target must be one exact tcp://host:port URL. The native bridge performs
+the RDP TLS negotiation over that TCP transport when the server requires it.
 The default target is ${defaultTarget}.`;
 
 function configuredTarget(value = process.env.FPASOTERM_RDP_TARGET || defaultTarget) {
@@ -19,11 +20,11 @@ function configuredTarget(value = process.env.FPASOTERM_RDP_TARGET || defaultTar
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error('FPASOTERM_RDP_TARGET must be an exact tcp://host:port or tls://host:port URL');
+    throw new Error('FPASOTERM_RDP_TARGET must be an exact tcp://host:port URL');
   }
-  if (!['tcp:', 'tls:'].includes(parsed.protocol) || !parsed.hostname || !parsed.port
+  if (parsed.protocol !== 'tcp:' || !parsed.hostname || !parsed.port
     || parsed.username || parsed.password || !['', '/'].includes(parsed.pathname) || parsed.search || parsed.hash) {
-    throw new Error('FPASOTERM_RDP_TARGET must be an exact tcp://host:port or tls://host:port URL');
+    throw new Error('FPASOTERM_RDP_TARGET must be an exact tcp://host:port URL');
   }
   const port = Number(parsed.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
