@@ -32,6 +32,28 @@ End users do not need `npm ci`, `npm run build`, or the port-specific
 `npm run ports -- ...` and `configure` remain for port authors rebuilding a
 bundle, changing noVNC's RFB compatibility mode, or validating `INDEX`.
 
+### Install-script approval for port authors
+
+Some managed Node.js environments print `npm warn install-scripts` for
+`esbuild` during `npm ci`. This is an install-script approval notice, not an
+`npm audit` vulnerability report. It affects only port-author rebuilds; normal
+fpasoterm installation from a checked-in port does not need Node.js or
+`esbuild`.
+
+Review the policy-controlled package before allowing it. Where the environment
+provides the command named in the warning, use:
+
+```sh
+npm install-scripts ls
+npm install-scripts approve esbuild
+```
+
+That approval permits the lockfile-pinned `esbuild` postinstall (`node
+install.js`), which selects its platform binary. Do not add a repository-wide
+allow rule automatically: the approval belongs to the user's or organization's
+Node.js policy. If the command is unavailable, follow the package-management
+policy for that environment instead.
+
 ## Direct Install From fpasoterm
 
 Released fpasoterm versions can install one selected public port without a full

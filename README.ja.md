@@ -25,6 +25,19 @@ bin/fpasoterm --plugin-install terminal/welcome-banner \
 
 fpasoterm 1.6.16以降でcheckoutに含まれるportを導入する利用者には、`npm ci`、`npm run build`、port固有の`configure` scriptは不要です。`npm run ports -- ...`と`configure`は、bundleの再生成、noVNC RFB互換modeの変更、`INDEX`検証を行うport author向けに残します。
 
+### port author向けinstall script承認
+
+管理されたNode.js環境では、`npm ci`中に`esbuild`に対する`npm warn install-scripts`が表示されることがあります。これは`npm audit`の脆弱性報告ではなく、install scriptの承認通知です。影響するのはport authorの再生成だけで、checked-in portをfpasotermから通常導入する利用者にNode.jsや`esbuild`は必要ありません。
+
+警告の対象packageを確認してから、環境が警告に記載されたcommandを提供している場合だけ、次を実行してください。
+
+```sh
+npm install-scripts ls
+npm install-scripts approve esbuild
+```
+
+これはlockfileで固定された`esbuild`のpostinstall（`node install.js`、platform binaryの選択）を許可します。repository全体で自動許可はしません。承認は利用者またはorganizationのNode.js policyに属します。commandが存在しない場合は、その環境のpackage-management policyに従ってください。
+
 ## fpasoterm からの直接install
 
 現在のfpasoterm releaseでは、ports checkout全体やNode.jsを使わずに、指定した公開portだけを導入できます。
