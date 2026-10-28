@@ -37,6 +37,40 @@ fpasoterm --plugin-install appearance/teal --enable
 
 最初のcommandは選択したsourceだけをreview用に`User/plugins`へ保存します。`--enable`は明示指定が必要で、既存plugin fileを置き換えるには`--force`が必要です。installerはこの公式repositoryだけから取得し、manifest、相対path、source size、version、plugin API headerを検証してからfileを書き込みます。
 
+### local install時のRDP/noVNC接続先指定
+
+fpasoterm 1.6.16以降では、review済みlocal RDP/noVNC portのinstallと、接続を許可する一つのbridge target指定を一つのcommandで実行できます。targetはplugin内のbridge callとnative permission headerの両方へ同じ値で保存されるため、pluginに任意のTCP endpointへの接続権限を与えません。
+
+```sh
+# siblingのfpasoterm checkoutから実行する。
+cd ../fpasoterm
+
+# RDPはtcp://だけを受け付ける。host:portはtcp://host:portへ正規化される。
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/rdp-local-bridge \
+  --plugin-tcp-target 192.0.2.25:3389 --enable --force
+
+# noVNCはtcp://またはtls://を受け付ける。
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/novnc-local-bridge \
+  --plugin-tcp-target tcp://192.0.2.10:5900 --enable --force
+```
+
+install後はfpasotermを再起動してください。初回installでは`--force`は不要です。`fpasoterm --plugin-update-all`で更新しても指定済みtargetは維持されます。
+
+### CLI helpと確認
+
+利用者が導入済みpluginを管理する場合は、`npm run ports`ではなくfpasoterm CLIを使用します。不足または組み合わせが不正なoptionは、理由に加えてcopy可能なbridge install形式を表示します。全optionは`--help`で確認できます。
+
+```sh
+fpasoterm --help
+fpasoterm --plugin-list       # --plugins-listもalias
+fpasoterm --plugin-info integration/rdp-local-bridge
+fpasoterm --plugin-info integration/novnc-local-bridge
+```
+
+`--plugin-list`と`--plugin-info`は設定済みの場合に`TCP target`を表示します。どちらもplugin sourceを実行せずheaderだけを読むため、windowを開きません。
+
 ## GitHub Sync
 
 GitHub上の現在のcheckoutから新しいport metadataとsourceを取得する場合は、次を実行します。

@@ -48,6 +48,48 @@ replace an existing plugin file. The installer fetches only from this official
 repository and validates the manifest, relative paths, source size, version,
 and plugin API header before writing the file.
 
+### RDP and noVNC target during local install
+
+With fpasoterm 1.6.16 or later, install a reviewed local RDP/noVNC port and
+set its one exact bridge target in one command. The target is written both to
+the plugin's bridge call and to its native permission header; it does not grant
+the plugin access to arbitrary TCP endpoints.
+
+```sh
+# Run from a sibling fpasoterm checkout.
+cd ../fpasoterm
+
+# RDP accepts tcp:// only. A bare host:port is normalized to tcp://host:port.
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/rdp-local-bridge \
+  --plugin-tcp-target 192.0.2.25:3389 --enable --force
+
+# noVNC accepts tcp:// or tls://.
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/novnc-local-bridge \
+  --plugin-tcp-target tcp://192.0.2.10:5900 --enable --force
+```
+
+Restart fpasoterm after installing. Omit `--force` for a first install. An
+update through `fpasoterm --plugin-update-all` keeps the configured target.
+
+### CLI help and inspection
+
+Use the fpasoterm CLI—not `npm run ports`—to manage a user's installed
+plugins. Every missing or incompatible option reports a specific error plus a
+copyable bridge-install shape, and `--help` prints all options.
+
+```sh
+fpasoterm --help
+fpasoterm --plugin-list       # --plugins-list is an alias
+fpasoterm --plugin-info integration/rdp-local-bridge
+fpasoterm --plugin-info integration/novnc-local-bridge
+```
+
+`--plugin-list` and `--plugin-info` display a declared `TCP target` when one
+is present. They read plugin headers only; neither command executes plugin
+source or opens a window.
+
 ## GitHub Sync
 
 Run the following from this Git checkout to retrieve the latest port metadata
