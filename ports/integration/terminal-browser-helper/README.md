@@ -2,11 +2,12 @@
 
 Adds **Insert terminal-browser command** to the fpasoterm Plugins menu.
 
-This port deliberately does not add pane splitting to fpasoterm and does not
-execute a shell command. Run the menu action in the destination pane, review
-the inserted command, and press Enter yourself. Direct and tmux launches
-remain in the current pane. Herdr launches are rejected before terminal modes
-are changed.
+This port deliberately does not add pane splitting to fpasoterm itself and does
+not execute a shell command. Run the menu action in the destination pane,
+review the inserted command, and press Enter yourself. Direct and tmux launches
+remain in the current pane. Herdr launches use terminal-browser's own
+`--split right` support so the browser pane can own focus and mouse capture
+instead of competing with the shell pane.
 
 ```sh
 fpasoterm --plugin-install integration/terminal-browser-helper --enable
@@ -17,7 +18,7 @@ inserts `terminal-browser open '<url>'` inside a small POSIX cleanup wrapper.
 The wrapper installs an exit trap, disables terminal mouse, focus,
 bracketed-paste, and alternate-screen modes, and runs `stty sane` so Herdr
 returns to normal pane navigation even after an interrupted browser process.
-The helper never adds `--split`, Enter, or a literal control character.
+The helper never adds Enter or a literal control character.
 
 The inserted command sets `TERMINAL_BROWSER_PRESENT=full`. fpasoterm's bounded
 Kitty renderer supports complete frames but deliberately does not implement
@@ -31,14 +32,16 @@ avoids Chromium's repeated Wayland/DRM initialization failures which can
 produce a slow monochrome startup frame. Native Linux Wayland sessions and all
 other applications keep their existing display backend.
 
-The command scopes `PIXEL_FPS=15` to a direct launch. Tests with Herdr 0.9.3
-showed that its Kitty pass-through can deliver full raw frames with invalid
-payload lengths or base64 data. The same PTY also carries keyboard and mouse
-reports, producing intermittent input, missing clicks, and alternating frame
-sizes. Lowering the frame rate to 1 FPS did not make this transport reliable,
-so `HERDR_PANE_ID` now causes a clear error instead of starting an unusable
-session. The helper intentionally stays in the current pane so a supported
-direct launch can use the full terminal area and does not leave a split behind.
+The command scopes `PIXEL_FPS=15` to a direct launch. When `HERDR_PANE_ID` is
+present, it instead uses `PIXEL_FPS=5 terminal-browser open --split right
+--size 0.45`. The split keeps terminal-browser's keyboard and mouse capture in
+the browser pane and leaves the original shell pane available for Herdr
+navigation. The lower Herdr frame rate reduces pressure on the multiplexed PTY
+while still keeping the page usable for verification. If the page is visible
+but clicks or keys do not affect it, first move Herdr focus to the browser pane
+with Herdr's pane selection shortcut or by clicking inside the browser pane;
+the original fpasoterm title bar still controls the fpasoterm window, not the
+new Herdr pane.
 These settings do not change the user's global terminal-browser configuration
 or affect ordinary terminal rendering.
 
@@ -83,11 +86,10 @@ Requirements and current limits:
 - `terminal-browser` must already be installed and available in the pane's
   `PATH`.
 - tmux owns pane creation and lifecycle. fpasoterm remains a single PTY.
-- Herdr Kitty pass-through is not supported for this helper. Run it from a
-  direct fpasoterm shell. The guard uses `HERDR_PANE_ID` and avoids entering
-  alternate-screen or mouse modes before reporting the limitation. The reject
-  branch also skips the cleanup wrapper, so it does not reset Herdr's existing
-  mouse, focus, bracketed-paste, alternate-screen, or tty state.
+- Herdr owns pane creation and focus. The helper asks terminal-browser to open
+  a Herdr split, but it cannot force Herdr focus from inside the shell command.
+  If input stays in the original pane, select the browser pane before testing
+  click/key handling.
 - terminal-browser still needs a terminal graphics protocol supported by the
   host terminal. fpasoterm 1.6.11 adds a bounded direct Kitty PNG/RGB/RGBA
   renderer which serializes decode work and drops stale pending frames. The
@@ -103,13 +105,17 @@ Requirements and current limits:
 
 ## Codex use
 
-This helper is not a replacement for Codex's terminal-browser skill. After a
-human reviews and runs the inserted command, a Codex process that can discover
-the resulting browser may control it with `terminal-browser ls --all` and
-`terminal-browser action --browser ...`. The helper itself does not expose a
-browser session, tab ID, snapshot, click, or fill API to Codex. On fpasoterm
-builds without a safe graphics renderer, starting the command still does not
-make the browser image usable.
+This helper is not a replacement for Codex's terminal-browser skill, but it is
+intended to make the same terminal-browser daemon usable from fpasoterm and
+Herdr-backed fpasoterm sessions. After a human reviews and runs the inserted
+command, a Codex process that can discover the resulting browser may control it
+with `terminal-browser ls --all` and `terminal-browser action --browser ...`.
+In Herdr, first make sure the browser split pane is focused for manual
+click/key verification; Codex action commands can then target the discovered
+browser by id. The helper itself does not expose a browser session, tab ID,
+snapshot, click, or fill API to Codex. On fpasoterm builds without a safe
+graphics renderer, starting the command still does not make the browser image
+usable.
 
 ## Review
 
@@ -117,11 +123,15 @@ make the browser image usable.
 2. Reinstall this port with `--force --enable`.
 3. Run **Insert terminal-browser command**, enter an HTTP(S) URL, review the
    inserted command, and press Enter.
-4. In a Herdr pane, confirm the command reports that pass-through is unsupported,
-   does not open terminal-browser, and leaves the shell immediately responsive.
+4. In a Herdr pane, confirm the reviewed command contains
+   `PIXEL_FPS=5`, `--split right --size 0.45`, no literal control characters,
+   and no inserted Enter. Press Enter, select the new browser pane if Herdr
+   focus remains in the original shell pane, then confirm clicks, text input,
+   and Ctrl+Q act on the browser pane. Confirm the original shell pane remains
+   available for Herdr navigation after the browser closes.
 5. In a direct fpasoterm shell, confirm the page appears and terminal input remains responsive while the
    page updates. Confirm the reviewed command contains
-   `PIXEL_FPS=15`, the Herdr rejection guard, no `--split`, and
+   `PIXEL_FPS=15`, no Herdr rejection guard, and
    `TERMINAL_BROWSER_PRESENT=full`. On Crostini, also confirm it
    contains `WAYLAND_DISPLAY= XDG_SESSION_TYPE=x11`. Confirm the fpasoterm
    title-bar buttons and menu remain responsive while the page updates. Press **Alt+-**,

@@ -1,4 +1,4 @@
-// @fpasoterm-plugin version: 1.0.1
+// @fpasoterm-plugin version: 1.0.4
 // @fpasoterm-plugin description: Verification noVNC client for the strictly declared local TCP bridge.
 // @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:5900
 (() => {
@@ -17538,10 +17538,12 @@
   var import_rfb = __toESM(require_rfb());
   var import_keysym = __toESM(require_keysym());
   var api = window.fpasotermPluginApi;
-  var forceRfb33 = false;
+  var forceRfb33 = true;
   api.registerCommand("novnc-local-bridge", "Open noVNC local bridge (test)", async () => {
     const remoteSuperKeysym = forceRfb33 ? import_keysym.default.XK_Alt_L : import_keysym.default.XK_Super_L;
     const remoteSuperCode = forceRfb33 ? "AltLeft" : "MetaLeft";
+    const remoteOptionKeysym = forceRfb33 ? import_keysym.default.XK_Super_L : import_keysym.default.XK_Alt_L;
+    const remoteOptionCode = forceRfb33 ? "MetaLeft" : "AltLeft";
     const overlay = api.openElementOverlay({ title: "noVNC local bridge (test)", width: 1100, height: 720 });
     const status = document.createElement("p");
     const toolbar = document.createElement("div");
@@ -17554,6 +17556,8 @@
     const panDown = document.createElement("button");
     const panRight = document.createElement("button");
     const metaNext = document.createElement("button");
+    const ctrlSpace = document.createElement("button");
+    const resetKeys = document.createElement("button");
     const clipboardPaste = document.createElement("textarea");
     const control = document.createElement("button");
     const alt = document.createElement("button");
@@ -17582,7 +17586,9 @@
       [panUp, "\u2191"],
       [panDown, "\u2193"],
       [panRight, "\u2192"],
-      [metaNext, "Command / Windows"]
+      [metaNext, "Command / Windows"],
+      [ctrlSpace, "Ctrl+Space"],
+      [resetKeys, "Reset keys"]
     ]) {
       button.type = "button";
       button.textContent = label;
@@ -17594,7 +17600,9 @@
     panRight.title = "Pan right";
     overview.title = "Show a clickable overview of the complete remote desktop";
     metaNext.title = "Apply the remote Command/Windows modifier to the next key only";
-    toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext);
+    ctrlSpace.title = "Send remote Control+Space; macOS can use this to change its input source";
+    resetKeys.title = "Release remote modifier keys if a VNC server has left Ctrl, Shift, Alt, or Command/Windows stuck";
+    toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext, ctrlSpace, resetKeys);
     clipboardPaste.rows = 3;
     clipboardPaste.placeholder = "Local \u2192 VNC: click here, then press Ctrl+V";
     clipboardPaste.title = "Uses a user-initiated paste event when this WebView blocks clipboard reads";
@@ -17789,6 +17797,29 @@
         rfb._viewOnly = wasViewOnly;
       }
     };
+    const releaseRemoteModifiers = () => {
+      if (!rfb) return;
+      const wasViewOnly = rfb._viewOnly;
+      rfb._viewOnly = false;
+      try {
+        rfb._keyboard?._allKeysUp?.();
+        const released = /* @__PURE__ */ new Set();
+        for (const modifier of [
+          { keysym: import_keysym.default.XK_Control_L, code: "ControlLeft" },
+          { keysym: import_keysym.default.XK_Shift_L, code: "ShiftLeft" },
+          { keysym: import_keysym.default.XK_Alt_L, code: "AltLeft" },
+          { keysym: remoteSuperKeysym, code: remoteSuperCode },
+          { keysym: remoteOptionKeysym, code: remoteOptionCode }
+        ]) {
+          const key = `${modifier.keysym}:${modifier.code}`;
+          if (released.has(key)) continue;
+          released.add(key);
+          rfb.sendKey(modifier.keysym, modifier.code, false);
+        }
+      } finally {
+        rfb._viewOnly = wasViewOnly;
+      }
+    };
     const sendCtrlChord = (character, includeShift = false) => {
       const lower = character.toLowerCase();
       const key = lower;
@@ -17820,6 +17851,27 @@
       ], "b", "KeyB");
       api.log("noVNC shortcut sent: Super+Shift+b (client Ctrl+Shift+b)");
       status.textContent = "Shortcut sent: Super+Shift+b";
+    };
+    const sendMacInputSourceShortcut = () => {
+      if (!connected || !rfb) {
+        status.textContent = "Ctrl+Space is unavailable until the VNC connection is ready.";
+        return;
+      }
+      releaseRemoteModifiers();
+      sendChord([{ keysym: import_keysym.default.XK_Control_L, code: "ControlLeft" }], " ", "Space");
+      rfb.focus();
+      status.textContent = "Remote Ctrl+Space sent.";
+      api.log("noVNC remote Ctrl+Space sent");
+    };
+    const resetRemoteKeys = () => {
+      if (!connected || !rfb) {
+        status.textContent = "Remote key reset is unavailable until the VNC connection is ready.";
+        return;
+      }
+      releaseRemoteModifiers();
+      rfb.focus();
+      status.textContent = "Remote modifier keys released.";
+      api.log("noVNC remote key state reset");
     };
     const dismissPrefixPalette = () => {
       if (prefixTimer) {
@@ -17964,6 +18016,8 @@
       setMetaNextArmed(!metaNextArmed);
       rfb?.focus();
     });
+    ctrlSpace.addEventListener("click", sendMacInputSourceShortcut);
+    resetKeys.addEventListener("click", resetRemoteKeys);
     fit.addEventListener("click", () => {
       if (rfb) {
         rfb.clipViewport = false;

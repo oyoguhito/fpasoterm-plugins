@@ -6,13 +6,15 @@ const api = window.fpasotermPluginApi;
 // security-type list unless the client negotiates RFB 3.3.  Keep the reviewed
 // public port on modern negotiation; the configure command can opt a generated
 // private-target build into the compatibility mode.
-const forceRfb33 = false;
+const forceRfb33 = true;
 
 api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', async () => {
   // Vine maps X11 Super/Meta to macOS Option (for example +V produces √).
   // Its macOS Command key is exposed as X11 Alt.
   const remoteSuperKeysym = forceRfb33 ? Keysyms.XK_Alt_L : Keysyms.XK_Super_L;
   const remoteSuperCode = forceRfb33 ? 'AltLeft' : 'MetaLeft';
+  const remoteOptionKeysym = forceRfb33 ? Keysyms.XK_Super_L : Keysyms.XK_Alt_L;
+  const remoteOptionCode = forceRfb33 ? 'MetaLeft' : 'AltLeft';
   const overlay = api.openElementOverlay({ title: 'noVNC local bridge (test)', width: 1100, height: 720 });
   const status = document.createElement('p');
   const toolbar = document.createElement('div');
@@ -25,6 +27,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const panDown = document.createElement('button');
   const panRight = document.createElement('button');
   const metaNext = document.createElement('button');
+  const ctrlSpace = document.createElement('button');
+  const resetKeys = document.createElement('button');
   const clipboardPaste = document.createElement('textarea');
   const control = document.createElement('button');
   const alt = document.createElement('button');
@@ -52,7 +56,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   for (const [button, label] of [
     [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [overview, 'Overview'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
-    [metaNext, 'Command / Windows'],
+    [metaNext, 'Command / Windows'], [ctrlSpace, 'Ctrl+Space'], [resetKeys, 'Reset keys'],
   ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
@@ -61,7 +65,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panDown.title = 'Pan down'; panRight.title = 'Pan right';
   overview.title = 'Show a clickable overview of the complete remote desktop';
   metaNext.title = 'Apply the remote Command/Windows modifier to the next key only';
-  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext);
+  ctrlSpace.title = 'Send remote Control+Space; macOS can use this to change its input source';
+  resetKeys.title = 'Release remote modifier keys if a VNC server has left Ctrl, Shift, Alt, or Command/Windows stuck';
+  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext, ctrlSpace, resetKeys);
   clipboardPaste.rows = 3;
   clipboardPaste.placeholder = 'Local → VNC: click here, then press Ctrl+V';
   clipboardPaste.title = 'Uses a user-initiated paste event when this WebView blocks clipboard reads';
@@ -281,6 +287,32 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       rfb._viewOnly = wasViewOnly;
     }
   };
+  const releaseRemoteModifiers = () => {
+    if (!rfb) return;
+    // Clear both noVNC's local key map and the server's key state. The explicit
+    // releases matter for Vine/macOS after a WebView has delivered only part
+    // of an earlier modifier gesture.
+    const wasViewOnly = rfb._viewOnly;
+    rfb._viewOnly = false;
+    try {
+      rfb._keyboard?._allKeysUp?.();
+      const released = new Set();
+      for (const modifier of [
+        { keysym: Keysyms.XK_Control_L, code: 'ControlLeft' },
+        { keysym: Keysyms.XK_Shift_L, code: 'ShiftLeft' },
+        { keysym: Keysyms.XK_Alt_L, code: 'AltLeft' },
+        { keysym: remoteSuperKeysym, code: remoteSuperCode },
+        { keysym: remoteOptionKeysym, code: remoteOptionCode },
+      ]) {
+        const key = `${modifier.keysym}:${modifier.code}`;
+        if (released.has(key)) continue;
+        released.add(key);
+        rfb.sendKey(modifier.keysym, modifier.code, false);
+      }
+    } finally {
+      rfb._viewOnly = wasViewOnly;
+    }
+  };
   const sendCtrlChord = (character, includeShift = false) => {
     const lower = character.toLowerCase();
     // Shift is sent as a separate modifier.  Keep the keysym itself lowercase:
@@ -317,6 +349,29 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     ], 'b', 'KeyB');
     api.log('noVNC shortcut sent: Super+Shift+b (client Ctrl+Shift+b)');
     status.textContent = 'Shortcut sent: Super+Shift+b';
+  };
+  const sendMacInputSourceShortcut = () => {
+    if (!connected || !rfb) {
+      status.textContent = 'Ctrl+Space is unavailable until the VNC connection is ready.';
+      return;
+    }
+    // This is a complete remote chord, not a local browser shortcut. macOS may
+    // bind Ctrl+Space to input-source selection, but the OS owns that result.
+    releaseRemoteModifiers();
+    sendChord([{ keysym: Keysyms.XK_Control_L, code: 'ControlLeft' }], ' ', 'Space');
+    rfb.focus();
+    status.textContent = 'Remote Ctrl+Space sent.';
+    api.log('noVNC remote Ctrl+Space sent');
+  };
+  const resetRemoteKeys = () => {
+    if (!connected || !rfb) {
+      status.textContent = 'Remote key reset is unavailable until the VNC connection is ready.';
+      return;
+    }
+    releaseRemoteModifiers();
+    rfb.focus();
+    status.textContent = 'Remote modifier keys released.';
+    api.log('noVNC remote key state reset');
   };
   const dismissPrefixPalette = () => {
     if (prefixTimer) { window.clearTimeout(prefixTimer); prefixTimer = null; }
@@ -453,6 +508,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     setMetaNextArmed(!metaNextArmed);
     rfb?.focus();
   });
+  ctrlSpace.addEventListener('click', sendMacInputSourceShortcut);
+  resetKeys.addEventListener('click', resetRemoteKeys);
   fit.addEventListener('click', () => {
     if (rfb) {
       rfb.clipViewport = false;

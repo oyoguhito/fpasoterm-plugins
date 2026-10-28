@@ -18,28 +18,40 @@ npm ci
 Use Node.js 20 or later. Do not use `npm ci --omit=dev`, because that omits
 `esbuild` and causes `Cannot find module 'esbuild'`.
 
-For an actual VNC check, configure the exact target and regenerate `plugin.js`
-together:
+For fpasoterm 1.6.16 or later, install the exact target directly from this
+checkout. This writes the same reviewed target into both the plugin program and
+its native bridge permission; rebuilding a private `plugin.js` is unnecessary:
+
+```bash
+cd ../fpasoterm
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/novnc-local-bridge \
+  --plugin-tcp-target tcp://host:port --enable --force
+```
+
+For older fpasoterm versions, configure the exact target and regenerate
+`plugin.js` together:
 
 ```bash
 npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
 ```
 
 Some Vine Server releases advertise RFB 3.8 but do not return the 3.8
-security-type list. If Diagnostics remains at connection setup with no desktop,
-rebuild that exact private target in RFB 3.3 compatibility mode:
+security-type list. This release uses RFB 3.3 compatibility mode by default
+for the verified Vine workflow. If a different server negotiates normally and
+needs modern RFB negotiation, rebuild a private target without the
+compatibility option:
 
 ```bash
 npm run port:integration:novnc-local-bridge:configure -- \
   tcp://host:port --rfb-3.3
 ```
 
-Do not enable this switch for servers that negotiate normally. RFB 3.3 has a
-different, older security negotiation and cannot use later authentication
-types. The compatibility mode also limits framebuffer encodings to Hextile and
-Raw because affected Vine releases can stall on noVNC's complete modern
-encoding and pseudo-encoding list. `reset` always turns the compatibility mode
-off.
+RFB 3.3 has a different, older security negotiation and cannot use later
+authentication types. The compatibility mode also limits framebuffer encodings
+to Hextile and Raw because affected Vine releases can stall on noVNC's complete
+modern encoding and pseudo-encoding list. `reset` restores loopback and turns
+the compatibility mode off.
 
 The default test endpoint is `tcp://127.0.0.1:5900` (VNC display `:0`). Use
 another trusted private-network endpoint only when it matches the server
@@ -50,7 +62,8 @@ rebuilt application:
 ```bash
 cd ../fpasoterm
 bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
-  --plugin-install integration/novnc-local-bridge --enable --force
+  --plugin-install integration/novnc-local-bridge \
+  --plugin-tcp-target tcp://host:port --enable --force
 bin/fpasoterm --dev --plugin-activity --console-diagnostics
 ```
 
@@ -59,6 +72,50 @@ connection dialog shows the exact configured target before selecting Connect.
 The plugin requests username first (leave blank for password-only servers),
 then password, before starting noVNC. The panel also provides **Zoom −**,
 **Zoom +**, and **Fit** controls; Fit is the default automatic sizing mode.
+
+## Japanese IME keys
+
+The toolbar has **Ctrl+Space** and **Reset keys** controls. **Ctrl+Space** sends
+a complete remote `Control+Space` chord. On macOS this can select another input
+source when that standard shortcut is enabled; Windows and Linux remote systems
+may bind it differently. It does not claim to select a particular source, and
+it does not change Vine's Keyboard Layout or the local computer's input source.
+It is a best-effort shortcut, not a way for the plugin to query or restore a
+named macOS input source.
+
+**Reset keys** explicitly releases remote Ctrl, Shift, Alt, and
+Command/Windows keys, and resets noVNC's tracked keys. Use it if normal letters
+start invoking shortcuts or a VNC server appears to retain a modifier. It is
+not a toggle: pressing it again safely repeats the key releases, but cannot
+undo a macOS input-source change that has already completed. The remote computer
+must have a Japanese input source or IME configured; VNC cannot install or
+select one that is absent. The controls report that a key was sent, rather than
+claiming that a particular input mode was selected.
+
+## Vine Server RFB 3.3 keyboard setup
+
+For Vine Server RFB 3.3, the recommended configuration for ordinary keyboard
+input is the following, followed by a macOS or Vine Server restart:
+
+1. Select **Unicode Hex Input** as Vine's Keyboard Layout.
+2. Make **Unicode Hex Input** the active macOS input source before Vine starts.
+
+This is a Vine compatibility configuration, not a requirement for every VNC
+server. It avoids ordinary `d` and `e` being interpreted as macOS function-key
+actions in the verified RFB 3.3 setup. If the remote Mac needs another input
+source after connecting, test that workflow separately: changing the active
+source from Unicode Hex Input (for example US → Japanese → US) can make the
+same `d`/`e` issue return. Standard RFB does not report the active macOS input
+source and cannot select a named source, so this plugin cannot automatically
+detect or restore Unicode Hex Input. The plugin sends ordinary RFB keys and
+does not remap normal letters or emulate Fn, so its Ctrl/Command and clipboard
+behavior remains intact.
+
+If input-source switching is required, use **Ctrl+Space** and confirm that the
+remote Mac has the needed sources and that **System Settings > Keyboard >
+Keyboard Shortcuts > Input Sources** has not replaced that shortcut. The plugin
+sends a complete press/release pair and resets any preceding remote modifiers
+first; it does not invoke local browser shortcuts.
 
 ## Clipboard
 

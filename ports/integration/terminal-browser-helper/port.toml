@@ -1,9 +1,9 @@
 [port]
 id = "integration/terminal-browser-helper"
 name = "terminal-browser-helper"
-version = "1.1.14"
+version = "1.1.15"
 author = "oyoguhito"
-description = "Prepares a reviewed terminal-browser command for a direct fpasoterm pane without executing it."
+description = "Prepares a reviewed terminal-browser command for fpasoterm and Herdr panes without executing it."
 license = "MIT"
 minFpasotermVersion = "1.6.11"
 source = "plugin.ts"
