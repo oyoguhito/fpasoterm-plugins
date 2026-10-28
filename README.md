@@ -21,20 +21,20 @@ Install only plugins you have reviewed and trust.
 
 ```sh
 git clone https://github.com/oyoguhito/fpasoterm-plugins.git
-cd fpasoterm-plugins
-npm ci
-npm run ports -- list
-fpasoterm --plugin-install terminal/welcome-banner \
-  --plugin-ports-dir . --enable
+cd ../fpasoterm
+bin/fpasoterm --plugin-list --plugin-ports-dir ../fpasoterm-plugins
+bin/fpasoterm --plugin-install terminal/welcome-banner \
+  --plugin-ports-dir ../fpasoterm-plugins --enable
 ```
 
-`npm run ports -- ...` remains available for port authors to search, generate
-and validate `INDEX`, and test port recipes. It is not the primary end-user
-installer.
+End users do not need `npm ci`, `npm run build`, or the port-specific
+`configure` scripts when fpasoterm 1.6.16 or later installs a checked-in port.
+`npm run ports -- ...` and `configure` remain for port authors rebuilding a
+bundle, changing noVNC's RFB compatibility mode, or validating `INDEX`.
 
 ## Direct Install From fpasoterm
 
-Current fpasoterm releases can install one selected public port without a full
+Released fpasoterm versions can install one selected public port without a full
 checkout or Node.js:
 
 ```sh
@@ -89,6 +89,15 @@ fpasoterm --plugin-info integration/novnc-local-bridge
 `--plugin-list` and `--plugin-info` display a declared `TCP target` when one
 is present. They read plugin headers only; neither command executes plugin
 source or opens a window.
+
+To review a checkout before installation rather than the already-installed
+`User/plugins` directory, add `--plugin-ports-dir`:
+
+```sh
+bin/fpasoterm --plugin-list --plugin-ports-dir ./fpasoterm-plugins
+bin/fpasoterm --plugin-info integration/novnc-local-bridge \
+  --plugin-ports-dir ./fpasoterm-plugins/ports
+```
 
 ## GitHub Sync
 

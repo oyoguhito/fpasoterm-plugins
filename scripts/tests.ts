@@ -214,7 +214,8 @@ const configureVncSource = fs.readFileSync(path.join(root, 'scripts', 'configure
 assert.match(configureVncSource, /--rfb-3\.3/);
 const resetVncSource = fs.readFileSync(path.join(root, 'scripts', 'reset-novnc-port.js'), 'utf8');
 assert.match(resetVncSource, /const forceRfb33 = false/);
-assert.match(vncReadme, /Vine Server[\s\S]*--rfb-3\.3/);
+assert.match(vncReadme, /Vine Server[\s\S]*RFB 3\.3 compatibility mode by default/);
+assert.match(vncReadme, /needs modern RFB negotiation[\s\S]*configure --[\s\S]*tcp:\/\/host:port/);
 const rdpReadme = fs.readFileSync(
   path.join(root, 'ports', 'integration', 'rdp-local-bridge', 'README.md'),
   'utf8',

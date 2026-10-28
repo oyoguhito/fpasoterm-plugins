@@ -5,18 +5,7 @@ noVNC 1.5.0 and can connect only to the exact target declared in its source:
 `tcp://127.0.0.1:5900`. This loopback-only default uses VNC display `:0` and
 does not permit a connection to any other host or port.
 
-## Prerequisite
-
-The configuration command rebuilds the bundled `plugin.js` with `esbuild`.
-After cloning the `fpasoterm-plugins` checkout, first install its development
-dependencies (including on Windows):
-
-```bash
-npm ci
-```
-
-Use Node.js 20 or later. Do not use `npm ci --omit=dev`, because that omits
-`esbuild` and causes `Cannot find module 'esbuild'`.
+## Install and optional port-author rebuild
 
 For fpasoterm 1.6.16 or later, install the exact target directly from this
 checkout. This writes the same reviewed target into both the plugin program and
@@ -26,13 +15,18 @@ its native bridge permission; rebuilding a private `plugin.js` is unnecessary:
 cd ../fpasoterm
 bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
   --plugin-install integration/novnc-local-bridge \
-  --plugin-tcp-target tcp://host:port --enable --force
+  --plugin-tcp-target tcp://host:port --enable
 ```
 
-For older fpasoterm versions, configure the exact target and regenerate
-`plugin.js` together:
+Add `--force` only when replacing an already-installed port.
+
+For older fpasoterm versions, or for a port author deliberately rebuilding a
+private `plugin.js`, install the development dependencies first. Use Node.js 20
+or later, and do not use `npm ci --omit=dev`, because that omits `esbuild`.
+Then configure the exact target and regenerate `plugin.js` together:
 
 ```bash
+npm ci
 npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
 ```
 
@@ -44,7 +38,7 @@ compatibility option:
 
 ```bash
 npm run port:integration:novnc-local-bridge:configure -- \
-  tcp://host:port --rfb-3.3
+  tcp://host:port
 ```
 
 RFB 3.3 has a different, older security negotiation and cannot use later
@@ -154,8 +148,8 @@ share its clipboard by changing this plugin alone.
 Verify both directions with disposable text: copy in the remote desktop and
 paste in a local editor, then copy in the local editor and paste remotely.
 
-After the check, restore both the checkout and installed plugin to the safe
-unused default:
+Port authors who changed the checked-in build can restore their checkout to the
+safe unused default and reinstall it:
 
 ```bash
 cd ../fpasoterm-plugins

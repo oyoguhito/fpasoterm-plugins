@@ -17,14 +17,13 @@ plugin は `~/.config/fpasoterm/User/plugins/` へcopyし、既存の fpasoterm 
 
 ```sh
 git clone https://github.com/oyoguhito/fpasoterm-plugins.git
-cd fpasoterm-plugins
-npm ci
-npm run ports -- list
-fpasoterm --plugin-install terminal/welcome-banner \
-  --plugin-ports-dir . --enable
+cd ../fpasoterm
+bin/fpasoterm --plugin-list --plugin-ports-dir ../fpasoterm-plugins
+bin/fpasoterm --plugin-install terminal/welcome-banner \
+  --plugin-ports-dir ../fpasoterm-plugins --enable
 ```
 
-`npm run ports -- ...`はport authorがlocal検索、`INDEX`生成・検証、port recipeのテストに使うため残します。利用者向けの主なinstallerではありません。
+fpasoterm 1.6.16以降でcheckoutに含まれるportを導入する利用者には、`npm ci`、`npm run build`、port固有の`configure` scriptは不要です。`npm run ports -- ...`と`configure`は、bundleの再生成、noVNC RFB互換modeの変更、`INDEX`検証を行うport author向けに残します。
 
 ## fpasoterm からの直接install
 
@@ -70,6 +69,14 @@ fpasoterm --plugin-info integration/novnc-local-bridge
 ```
 
 `--plugin-list`と`--plugin-info`は設定済みの場合に`TCP target`を表示します。どちらもplugin sourceを実行せずheaderだけを読むため、windowを開きません。
+
+導入済み`User/plugins`ではなくcheckoutを導入前にreviewするには、`--plugin-ports-dir`を追加します。
+
+```sh
+bin/fpasoterm --plugin-list --plugin-ports-dir ./fpasoterm-plugins
+bin/fpasoterm --plugin-info integration/novnc-local-bridge \
+  --plugin-ports-dir ./fpasoterm-plugins/ports
+```
 
 ## GitHub Sync
 
