@@ -241,6 +241,7 @@ assert.match(rdpEntrySource, /cancelAnimationFrame\(pointerFrame\)/);
 assert.match(rdpEntrySource, /const DESKTOP_WIDTH = 1280/);
 assert.match(rdpEntrySource, /const DESKTOP_HEIGHT = 720/);
 assert.match(rdpEntrySource, /new DesktopSize\(DESKTOP_WIDTH, DESKTOP_HEIGHT\)/);
+assert.match(rdpEntrySource, /data-fpasoterm-video-capture', 'front'/);
 assert.match(rdpEntrySource, /DeviceEvent\.keyPressed/);
 assert.match(rdpEntrySource, /metaNext\.textContent = 'Command \/ Windows'/);
 assert.match(rdpEntrySource, /consumeMetaNext: \(\) =>/);

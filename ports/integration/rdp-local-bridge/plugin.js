@@ -1,4 +1,4 @@
-// @fpasoterm-plugin version: 0.1.1
+// @fpasoterm-plugin version: 0.1.2
 // @fpasoterm-plugin description: Prototype RDP client using the declared local bridge.
 // @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:53389
 // Third-party: ironrdp-wasm 1.1.0 (MIT), https://github.com/electerm/ironrdp-wasm
@@ -2139,6 +2139,7 @@ ${val.stack}`;
     clipboardPaste.disabled = true;
     controls.append(status, metaNext);
     root.append(controls, canvas, clipboardPaste);
+    canvas.setAttribute("data-fpasoterm-video-capture", "front");
     let metaNextArmed = false;
     metaNext.addEventListener("click", () => {
       metaNextArmed = !metaNextArmed;

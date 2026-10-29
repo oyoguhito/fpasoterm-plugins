@@ -215,6 +215,10 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   clipboardPaste.disabled = true;
   controls.append(status, metaNext);
   root.append(controls, canvas, clipboardPaste);
+  // Let fpasoterm record this remote desktop directly. Overlay-tree discovery
+  // is retained as a fallback, but macOS WebViews can transiently reparent a
+  // local overlay while an RDP surface is focused.
+  canvas.setAttribute('data-fpasoterm-video-capture', 'front');
   let metaNextArmed = false;
   metaNext.addEventListener('click', () => {
     metaNextArmed = !metaNextArmed;
