@@ -15,7 +15,7 @@ const stableHistory: Record<string, { revision: string; previousVersion: string;
     revision: '648f1cb1e0e17a8175002a1556368bf972e6e69d', previousVersion: '1.1.14', previousRevision: '34d1b3fb554e06c8fb51b48d5f9fa63d0cf12b4b',
   },
   'integration/novnc-local-bridge': {
-    revision: '648f1cb1e0e17a8175002a1556368bf972e6e69d', previousVersion: '1.0.1', previousRevision: 'b525c5ef42ae140300363f4fb6be0dae8c6b189b',
+    revision: '8b7345774f993c04ddf29e17c04c975b7d5b75c4', previousVersion: '1.0.4', previousRevision: '648f1cb1e0e17a8175002a1556368bf972e6e69d',
   },
   'integration/rdp-local-bridge': {
     revision: '1ced046834a8f0f9c0aadc0f5032430e4f148074', previousVersion: '0.1.1', previousRevision: 'b525c5ef42ae140300363f4fb6be0dae8c6b189b',
