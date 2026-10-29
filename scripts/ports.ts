@@ -18,7 +18,7 @@ const stableHistory: Record<string, { revision: string; previousVersion: string;
     revision: '648f1cb1e0e17a8175002a1556368bf972e6e69d', previousVersion: '1.0.1', previousRevision: 'b525c5ef42ae140300363f4fb6be0dae8c6b189b',
   },
   'integration/rdp-local-bridge': {
-    revision: 'b525c5ef42ae140300363f4fb6be0dae8c6b189b', previousVersion: '0.1.0', previousRevision: 'e9e6c20e114da9d3d82e42ec1cf170c6eb3767d4',
+    revision: '1ced046834a8f0f9c0aadc0f5032430e4f148074', previousVersion: '0.1.1', previousRevision: 'b525c5ef42ae140300363f4fb6be0dae8c6b189b',
   },
 };
 
