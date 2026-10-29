@@ -15,7 +15,9 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const entry = path.join(root, 'scripts', 'novnc-plugin-entry.js');
 const output = path.join(root, 'ports', 'integration', 'novnc-local-bridge', 'plugin.js');
-const defaultTarget = 'tcp://127.0.0.1:5900';
+// Keep an installed review port inert until its operator explicitly selects a
+// VNC endpoint. 5900 is the conventional VNC port, not a safe default.
+const defaultTarget = 'tcp://127.0.0.1:53390';
 function configuredRfbMode(source) {
   return /const forceRfb33 = true;/.test(source) ? '3.3 (Vine compatibility)' : 'automatic (up to 3.8)';
 }
@@ -29,9 +31,12 @@ function usage(target = defaultTarget, rfbMode = 'automatic (up to 3.8)') {
 Vine Server example:
   npm run port:integration:novnc-local-bridge:configure -- tcp://192.0.2.10:5900 --rfb-3.3
 
-Default after reset: ${defaultTarget}
+Safe default after reset: ${defaultTarget}
 Currently configured target: ${target}
 Currently configured RFB mode: ${rfbMode}
+
+The safe default does not contact a VNC server. Configure a reviewed endpoint
+explicitly (normally tcp://host:5900 or tls://host:5900) before using it.
 
 Use --rfb-3.3 only for a Vine Server that advertises 3.8 but stalls during
 security negotiation. The build command uses the strict target and protocol
@@ -53,7 +58,7 @@ function build() {
     target: 'es2020',
     banner: {
       js: [
-        '// @fpasoterm-plugin version: 1.0.4',
+        '// @fpasoterm-plugin version: 1.0.5',
         '// @fpasoterm-plugin description: Verification noVNC client for the strictly declared local TCP bridge.',
         `// @fpasoterm-plugin allowed-tcp-targets: ${target}`,
       ].join('\n'),

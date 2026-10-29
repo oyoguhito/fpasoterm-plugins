@@ -2,8 +2,10 @@
 
 This is a verification port for fpasoterm's local VNC bridge. It bundles
 noVNC 1.5.0 and can connect only to the exact target declared in its source:
-`tcp://127.0.0.1:5900`. This loopback-only default uses VNC display `:0` and
-does not permit a connection to any other host or port.
+`tcp://127.0.0.1:53390`. This is an inert, loopback-only safety default: it is
+not VNC's standard port and normally has no server listening. It does not
+permit a connection to any other host or port until installation explicitly
+sets one.
 
 ## Install and optional port-author rebuild
 
@@ -47,9 +49,10 @@ to Hextile and Raw because affected Vine releases can stall on noVNC's complete
 modern encoding and pseudo-encoding list. `reset` restores loopback and turns
 the compatibility mode off.
 
-The default test endpoint is `tcp://127.0.0.1:5900` (VNC display `:0`). Use
-another trusted private-network endpoint only when it matches the server
-configuration. Then,
+The safe default is `tcp://127.0.0.1:53390`; it intentionally does not use a
+VNC display. Select a trusted endpoint explicitly, normally
+`tcp://host:5900` or `tls://host:5900` (VNC display `:0`), only when it matches
+the server configuration. Then,
 from a sibling fpasoterm checkout, install the local port and start a freshly
 rebuilt application:
 

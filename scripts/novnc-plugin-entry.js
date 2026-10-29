@@ -570,9 +570,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panCapture.addEventListener('pointerup', stopDragPan);
   panCapture.addEventListener('pointercancel', stopDragPan);
   try {
-    // This exact target is declared in the installed plugin header. To connect
-    // elsewhere, make a reviewed plugin with a matching target declaration.
-    const bridgeUrl = await api.openVncBridge({ target: 'tcp://127.0.0.1:5900' });
+    // This exact safe default is declared in the installed plugin header. It
+    // is deliberately not VNC's standard 5900; install with
+    // --plugin-tcp-target tcp://host:5900 (or tls://host:5900) to connect.
+    const bridgeUrl = await api.openVncBridge({ target: 'tcp://127.0.0.1:53390' });
     status.textContent = 'Connecting to the configured verification target through the local bridge…';
     const username = await api.promptText({
       title: 'VNC username',
