@@ -21,20 +21,42 @@ Install only plugins you have reviewed and trust.
 
 ```sh
 git clone https://github.com/oyoguhito/fpasoterm-plugins.git
-cd fpasoterm-plugins
-npm ci
-npm run ports -- list
-fpasoterm --plugin-install terminal/welcome-banner \
-  --plugin-ports-dir . --enable
+cd ../fpasoterm
+bin/fpasoterm --plugin-list --plugin-ports-dir ../fpasoterm-plugins
+bin/fpasoterm --plugin-install terminal/welcome-banner \
+  --plugin-ports-dir ../fpasoterm-plugins --enable
 ```
 
-`npm run ports -- ...` remains available for port authors to search, generate
-and validate `INDEX`, and test port recipes. It is not the primary end-user
-installer.
+End users do not need `npm ci`, `npm run build`, or the port-specific
+`configure` scripts when fpasoterm 1.6.16 or later installs a checked-in port.
+`npm run ports -- ...` and `configure` remain for port authors rebuilding a
+bundle, changing noVNC's RFB compatibility mode, or validating `INDEX`.
+
+### Install-script approval for port authors
+
+Some managed Node.js environments print `npm warn install-scripts` for
+`esbuild` during `npm ci`. This is an install-script approval notice, not an
+`npm audit` vulnerability report. It affects only port-author rebuilds; normal
+fpasoterm installation from a checked-in port does not need Node.js or
+`esbuild`.
+
+Review the policy-controlled package before allowing it. Where the environment
+provides the command named in the warning, use:
+
+```sh
+npm install-scripts ls
+npm install-scripts approve esbuild
+```
+
+That approval permits the lockfile-pinned `esbuild` postinstall (`node
+install.js`), which selects its platform binary. Do not add a repository-wide
+allow rule automatically: the approval belongs to the user's or organization's
+Node.js policy. If the command is unavailable, follow the package-management
+policy for that environment instead.
 
 ## Direct Install From fpasoterm
 
-Current fpasoterm releases can install one selected public port without a full
+Released fpasoterm versions can install one selected public port without a full
 checkout or Node.js:
 
 ```sh
@@ -47,6 +69,57 @@ review. `--enable` is explicit, and `--force` is required to
 replace an existing plugin file. The installer fetches only from this official
 repository and validates the manifest, relative paths, source size, version,
 and plugin API header before writing the file.
+
+### RDP and noVNC target during local install
+
+With fpasoterm 1.6.16 or later, install a reviewed local RDP/noVNC port and
+set its one exact bridge target in one command. The target is written both to
+the plugin's bridge call and to its native permission header; it does not grant
+the plugin access to arbitrary TCP endpoints.
+
+```sh
+# Run from a sibling fpasoterm checkout.
+cd ../fpasoterm
+
+# RDP accepts tcp:// only. A bare host:port is normalized to tcp://host:port.
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/rdp-local-bridge \
+  --plugin-tcp-target 192.0.2.25:3389 --enable --force
+
+# noVNC accepts tcp:// or tls://.
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/novnc-local-bridge \
+  --plugin-tcp-target tcp://192.0.2.10:5900 --enable --force
+```
+
+Restart fpasoterm after installing. Omit `--force` for a first install. An
+update through `fpasoterm --plugin-update-all` keeps the configured target.
+
+### CLI help and inspection
+
+Use the fpasoterm CLI—not `npm run ports`—to manage a user's installed
+plugins. Every missing or incompatible option reports a specific error plus a
+copyable bridge-install shape, and `--help` prints all options.
+
+```sh
+fpasoterm --help
+fpasoterm --plugin-list       # --plugins-list is an alias
+fpasoterm --plugin-info integration/rdp-local-bridge
+fpasoterm --plugin-info integration/novnc-local-bridge
+```
+
+`--plugin-list` and `--plugin-info` display a declared `TCP target` when one
+is present. They read plugin headers only; neither command executes plugin
+source or opens a window.
+
+To review a checkout before installation rather than the already-installed
+`User/plugins` directory, add `--plugin-ports-dir`:
+
+```sh
+bin/fpasoterm --plugin-list --plugin-ports-dir ./fpasoterm-plugins
+bin/fpasoterm --plugin-info integration/novnc-local-bridge \
+  --plugin-ports-dir ./fpasoterm-plugins/ports
+```
 
 ## GitHub Sync
 

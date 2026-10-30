@@ -1,6 +1,6 @@
 /// <reference path="../../../api/fpasoterm-plugin.d.ts" />
-// @fpasoterm-plugin version: 1.1.14
-// @fpasoterm-plugin description: Prepares a reviewed terminal-browser command for a direct fpasoterm pane.
+// @fpasoterm-plugin version: 1.1.15
+// @fpasoterm-plugin description: Prepares a reviewed terminal-browser command for fpasoterm and Herdr panes.
 
 const api = window.fpasotermPluginApi;
 
@@ -53,14 +53,16 @@ api.registerCommand('terminal-browser-helper.insert', 'Insert terminal-browser c
   // Chromium's Wayland/DRM initialization is unreliable in ChromeOS's
   // Sommelier container even though its X11 bridge is available. Scope the
   // X11 preference to that environment; native Wayland sessions are unchanged.
-  // Herdr 0.9.3 Kitty pass-through can corrupt a single full raw frame before
-  // it reaches fpasoterm (invalid raw length/base64), while the same PTY is
-  // also carrying keyboard and mouse reports. Lowering FPS does not make that
-  // transport reliable. Fail before changing terminal modes instead of
-  // opening a browser that intermittently loses display and user input.
-  const guard = `if [ -n "\${HERDR_PANE_ID:-}" ]; then printf '%s\\n' 'terminal-browser-helper: Herdr Kitty pass-through is currently unsupported because it can corrupt full frames and input. Run this command in a direct fpasoterm shell.' >&2; :; else`;
-  const launch = `if [ -n "\${SOMMELIER_VERSION:-}" ] && [ -n "\${DISPLAY:-}" ]; then WAYLAND_DISPLAY= XDG_SESSION_TYPE=x11 PIXEL_FPS=15 TERMINAL_BROWSER_PRESENT=full terminal-browser open '${url}'; else PIXEL_FPS=15 TERMINAL_BROWSER_PRESENT=full terminal-browser open '${url}'; fi`;
+  // In Herdr, opening terminal-browser in the current pane leaves one PTY
+  // stream carrying browser graphics plus shell input/mouse state. Prefer a
+  // Herdr-managed split pane so the browser pane can own focus and mouse
+  // capture. Keep the frame rate lower there to reduce back-pressure through
+  // Herdr's Kitty pass-through. The inserted text still contains no literal
+  // control characters or Enter; the user reviews it and presses Enter.
+  const herdrLaunch = `PIXEL_FPS=5 TERMINAL_BROWSER_PRESENT=full terminal-browser open '${url}' --split right --size 0.45`;
+  const directLaunch = `if [ -n "\${SOMMELIER_VERSION:-}" ] && [ -n "\${DISPLAY:-}" ]; then WAYLAND_DISPLAY= XDG_SESSION_TYPE=x11 PIXEL_FPS=15 TERMINAL_BROWSER_PRESENT=full terminal-browser open '${url}'; else PIXEL_FPS=15 TERMINAL_BROWSER_PRESENT=full terminal-browser open '${url}'; fi`;
+  const launch = `if [ -n "\${HERDR_PANE_ID:-}" ]; then ${herdrLaunch}; else ${directLaunch}; fi`;
   const restore = "terminal_browser_status=$?; trap - EXIT; terminal_browser_cleanup; (exit \"$terminal_browser_status\")";
-  api.insertTerminalText(`${guard} ${cleanup}; trap terminal_browser_cleanup EXIT; ${launch}; ${restore}; fi`);
-  api.log('terminal-browser command inserted with direct-pane guard, Crostini X11 fallback, 15 FPS full-frame presentation, and trapped post-exit terminal recovery; Herdr is rejected before launch; press Enter to start; use the title-bar zoom controls, and Ctrl+Q returns');
+  api.insertTerminalText(`${cleanup}; trap terminal_browser_cleanup EXIT; ${launch}; ${restore}`);
+  api.log('terminal-browser command inserted with Herdr split-pane launch, Crostini X11 fallback, full-frame presentation, and trapped post-exit terminal recovery; press Enter to start; use the title-bar zoom controls, and Ctrl+Q returns');
 });

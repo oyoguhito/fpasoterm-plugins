@@ -17,14 +17,26 @@ plugin は `~/.config/fpasoterm/User/plugins/` へcopyし、既存の fpasoterm 
 
 ```sh
 git clone https://github.com/oyoguhito/fpasoterm-plugins.git
-cd fpasoterm-plugins
-npm ci
-npm run ports -- list
-fpasoterm --plugin-install terminal/welcome-banner \
-  --plugin-ports-dir . --enable
+cd ../fpasoterm
+bin/fpasoterm --plugin-list --plugin-ports-dir ../fpasoterm-plugins
+bin/fpasoterm --plugin-install terminal/welcome-banner \
+  --plugin-ports-dir ../fpasoterm-plugins --enable
 ```
 
-`npm run ports -- ...`はport authorがlocal検索、`INDEX`生成・検証、port recipeのテストに使うため残します。利用者向けの主なinstallerではありません。
+fpasoterm 1.6.16以降でcheckoutに含まれるportを導入する利用者には、`npm ci`、`npm run build`、port固有の`configure` scriptは不要です。`npm run ports -- ...`と`configure`は、bundleの再生成、noVNC RFB互換modeの変更、`INDEX`検証を行うport author向けに残します。
+
+### port author向けinstall script承認
+
+管理されたNode.js環境では、`npm ci`中に`esbuild`に対する`npm warn install-scripts`が表示されることがあります。これは`npm audit`の脆弱性報告ではなく、install scriptの承認通知です。影響するのはport authorの再生成だけで、checked-in portをfpasotermから通常導入する利用者にNode.jsや`esbuild`は必要ありません。
+
+警告の対象packageを確認してから、環境が警告に記載されたcommandを提供している場合だけ、次を実行してください。
+
+```sh
+npm install-scripts ls
+npm install-scripts approve esbuild
+```
+
+これはlockfileで固定された`esbuild`のpostinstall（`node install.js`、platform binaryの選択）を許可します。repository全体で自動許可はしません。承認は利用者またはorganizationのNode.js policyに属します。commandが存在しない場合は、その環境のpackage-management policyに従ってください。
 
 ## fpasoterm からの直接install
 
@@ -36,6 +48,48 @@ fpasoterm --plugin-install appearance/teal --enable
 ```
 
 最初のcommandは選択したsourceだけをreview用に`User/plugins`へ保存します。`--enable`は明示指定が必要で、既存plugin fileを置き換えるには`--force`が必要です。installerはこの公式repositoryだけから取得し、manifest、相対path、source size、version、plugin API headerを検証してからfileを書き込みます。
+
+### local install時のRDP/noVNC接続先指定
+
+fpasoterm 1.6.16以降では、review済みlocal RDP/noVNC portのinstallと、接続を許可する一つのbridge target指定を一つのcommandで実行できます。targetはplugin内のbridge callとnative permission headerの両方へ同じ値で保存されるため、pluginに任意のTCP endpointへの接続権限を与えません。
+
+```sh
+# siblingのfpasoterm checkoutから実行する。
+cd ../fpasoterm
+
+# RDPはtcp://だけを受け付ける。host:portはtcp://host:portへ正規化される。
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/rdp-local-bridge \
+  --plugin-tcp-target 192.0.2.25:3389 --enable --force
+
+# noVNCはtcp://またはtls://を受け付ける。
+bin/fpasoterm --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-install integration/novnc-local-bridge \
+  --plugin-tcp-target tcp://192.0.2.10:5900 --enable --force
+```
+
+install後はfpasotermを再起動してください。初回installでは`--force`は不要です。`fpasoterm --plugin-update-all`で更新しても指定済みtargetは維持されます。
+
+### CLI helpと確認
+
+利用者が導入済みpluginを管理する場合は、`npm run ports`ではなくfpasoterm CLIを使用します。不足または組み合わせが不正なoptionは、理由に加えてcopy可能なbridge install形式を表示します。全optionは`--help`で確認できます。
+
+```sh
+fpasoterm --help
+fpasoterm --plugin-list       # --plugins-listもalias
+fpasoterm --plugin-info integration/rdp-local-bridge
+fpasoterm --plugin-info integration/novnc-local-bridge
+```
+
+`--plugin-list`と`--plugin-info`は設定済みの場合に`TCP target`を表示します。どちらもplugin sourceを実行せずheaderだけを読むため、windowを開きません。
+
+導入済み`User/plugins`ではなくcheckoutを導入前にreviewするには、`--plugin-ports-dir`を追加します。
+
+```sh
+bin/fpasoterm --plugin-list --plugin-ports-dir ./fpasoterm-plugins
+bin/fpasoterm --plugin-info integration/novnc-local-bridge \
+  --plugin-ports-dir ./fpasoterm-plugins/ports
+```
 
 ## GitHub Sync
 

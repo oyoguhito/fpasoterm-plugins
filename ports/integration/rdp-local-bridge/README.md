@@ -26,7 +26,7 @@ certificate to IronRDP as required by RDCleanPath, and confines the connection
 to the reviewed exact target. Connect only to a host whose identity and network
 you trust; certificate pinning/interactive certificate approval is future work.
 
-## Build and verification
+## Install and verification
 
 Use a Windows host on a network you trust, with Remote Desktop enabled and a
 separate target address such as `192.0.2.25:3389`. RDP authentication and its
@@ -34,16 +34,26 @@ own negotiated security remain the responsibility of the RDP server and
 IronRDP; `tcp://` means only that the native loopback bridge does not add a
 second TLS wrapper.
 
-Build a port for the target. The build validates and normalizes the target,
-embeds it in the plugin, and writes the identical value into the
-`allowed-tcp-targets` header:
+With fpasoterm 1.6.16 or later, no Node.js build is needed for normal use. The
+checked-in bundle is copied from this checkout, and fpasoterm writes the exact
+target into both the plugin bridge call and its `allowed-tcp-targets` header:
+
+```bash
+cd ../fpasoterm
+bin/fpasoterm --plugin-list --plugin-ports-dir ../fpasoterm-plugins
+bin/fpasoterm --plugin-install integration/rdp-local-bridge \
+  --plugin-ports-dir ../fpasoterm-plugins/ports \
+  --plugin-tcp-target 192.0.2.25:3389 --enable
+```
+
+Use `--force` only when replacing an existing installed port. `--plugin-info
+integration/rdp-local-bridge` then displays the installed target. The port
+build command remains only for port authors or for older fpasoterm releases:
 
 ```bash
 npm ci
 FPASOTERM_RDP_TARGET=tcp://192.0.2.25:3389 \
   npm run port:integration:rdp-local-bridge:build
-npm run ports -- index
-npm run check
 ```
 
 IronRDP's WebAssembly makes this generated port approximately 5.5 MiB.
@@ -51,24 +61,9 @@ Accordingly, its reviewed `port.toml` declares `maxSourceBytes = 8388608`.
 fpasoterm keeps the normal 1 MiB limit for arbitrary local plugin files and
 for ports without that explicit declaration.
 
-Install the resulting reviewed local port with the *native fpasoterm binary
-that will run the window*, then restart fpasoterm so it loads the enabled
-plugin. In this source checkout's release build, that is
-`src-tauri/release/target/fpasoterm` (use the corresponding absolute path when
-the plugin checkout is elsewhere):
-
-```bash
-../fpasoterm/src-tauri/release/target/fpasoterm \
-  --plugin-install integration/rdp-local-bridge \
-  --plugin-ports-dir . --enable
-../fpasoterm/src-tauri/release/target/fpasoterm \
-  --plugin-info integration/rdp-local-bridge.js
-```
-
-Do not substitute `bin/fpasoterm --dev` for this installation command: that is
-the Node.js development launcher and can build or run a different debug
-runtime. For a packaged installation, use its installed `fpasoterm`
-executable instead.
+Restart fpasoterm after installation so it loads the enabled plugin. For a
+packaged installation, use the installed `fpasoterm` executable instead of a
+source checkout launcher.
 
 During pre-release testing, use the fpasoterm build that contains the RDP
 bridge and reviewed-port source-limit support from the same change set. The RDP

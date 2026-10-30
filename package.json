@@ -1,6 +1,6 @@
 {
   "name": "fpasoterm-plugins",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "private": true,
   "description": "Ports-style community plugins for fpasoterm.",
   "license": "MIT",
