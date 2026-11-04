@@ -189,6 +189,10 @@ assert.match(vncEntrySource, /new URL\(bridgeUrl\)\.searchParams\.get\('trace'\)
 assert.match(vncEntrySource, /bridge=\$\{ra2BridgeTraceId\}/);
 assert.match(vncEntrySource, /const rawWebSocket = socket\?\._websocket;/);
 assert.match(vncEntrySource, /rawWebSocket\.onmessage = wrappedMessageHandler;/);
+assert.match(vncEntrySource, /const installVncBridgeCloseDiagnostics = \(\) =>/);
+assert.match(vncEntrySource, /rawWebSocket\.addEventListener\('close', reportClose\);/);
+assert.match(vncEntrySource, /VNC bridge closed before connection/);
+assert.match(vncEntrySource, /installVncBridgeCloseDiagnostics\(\);/);
 assert.match(vncEntrySource, /observeRawServerRandom\(event\?\.data\);/);
 assert.match(vncEntrySource, /Object\.prototype\.toString\.call\(data\) !== '\[object ArrayBuffer\]'/);
 assert.match(vncEntrySource, /noVNC RA2ne queue before server-random:/);

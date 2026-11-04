@@ -130,6 +130,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let rawServerRandomLogged = false;
   let rawServerRandomCaptureArmed = false;
   let restoreRa2WebsockReceiveDiagnostics = () => {};
+  let restoreVncBridgeCloseDiagnostics = () => {};
   const bytesDigest = async (bytes) => {
     const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
     return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -198,6 +199,26 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         rawWebSocket.onmessage = originalMessageHandler;
       }
       restoreRa2WebsockReceiveDiagnostics = () => {};
+    };
+  };
+  const installVncBridgeCloseDiagnostics = () => {
+    const rawWebSocket = rfb?._sock?._websocket;
+    if (!rawWebSocket || typeof rawWebSocket.addEventListener !== 'function') {
+      api.log(`noVNC bridge close diagnostics unavailable: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId}`);
+      return;
+    }
+    const reportClose = (event) => {
+      if (connected || connectionFailure) return;
+      const reason = typeof event?.reason === 'string' ? event.reason.trim().slice(0, 240) : '';
+      const code = Number.isFinite(Number(event?.code)) ? ` (WebSocket code ${Number(event.code)})` : '';
+      connectionFailure = `VNC bridge closed before connection${reason ? `: ${reason}` : code}. Verify the configured target, firewall, and Plugin Activity.`;
+      status.textContent = connectionFailure;
+      api.log(`noVNC bridge closed before connection: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId}${code}${reason ? ` reason=${reason}` : ''}`);
+    };
+    rawWebSocket.addEventListener('close', reportClose);
+    restoreVncBridgeCloseDiagnostics = () => {
+      rawWebSocket.removeEventListener('close', reportClose);
+      restoreVncBridgeCloseDiagnostics = () => {};
     };
   };
   const rememberRa2State = () => {
@@ -921,6 +942,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     });
     if (password === null) { status.textContent = 'VNC password entry cancelled.'; return; }
     rfb = new RFB(screen, bridgeUrl, { credentials: { username, password } });
+    installVncBridgeCloseDiagnostics();
     installRa2WebsockReceiveDiagnostics();
     installRa2WireDiagnostics();
     installRa2CryptoDiagnostics();
@@ -1238,6 +1260,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       }
     });
     rfb.addEventListener('disconnect', (event) => {
+      restoreVncBridgeCloseDiagnostics();
       restoreRa2WebsockReceiveDiagnostics();
       restoreRa2CryptoDiagnostics();
       stopClipboardSync();
@@ -1373,6 +1396,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       if (!connected) rfb.sendCredentials(credentials);
     });
   } catch (error) {
+    restoreVncBridgeCloseDiagnostics();
     restoreRa2WebsockReceiveDiagnostics();
     restoreRa2CryptoDiagnostics();
     status.textContent = `Could not start noVNC: ${String(error)}`;
