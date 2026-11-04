@@ -1,4 +1,4 @@
-// @fpasoterm-plugin version: 1.0.5
+// @fpasoterm-plugin version: 1.0.6
 // @fpasoterm-plugin description: Verification noVNC client for the strictly declared local TCP bridge.
 // @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:53390
 (() => {
@@ -17537,8 +17537,9 @@
   // scripts/novnc-plugin-entry.js
   var import_rfb = __toESM(require_rfb());
   var import_keysym = __toESM(require_keysym());
+  var import_crypto = __toESM(require_crypto());
   var api = window.fpasotermPluginApi;
-  var forceRfb33 = true;
+  var forceRfb33 = false;
   api.registerCommand("novnc-local-bridge", "Open noVNC local bridge (test)", async () => {
     const remoteSuperKeysym = forceRfb33 ? import_keysym.default.XK_Alt_L : import_keysym.default.XK_Super_L;
     const remoteSuperCode = forceRfb33 ? "AltLeft" : "MetaLeft";
@@ -17557,6 +17558,7 @@
     const panRight = document.createElement("button");
     const metaNext = document.createElement("button");
     const ctrlSpace = document.createElement("button");
+    const shortcuts = document.createElement("button");
     const resetKeys = document.createElement("button");
     const clipboardPaste = document.createElement("textarea");
     const control = document.createElement("button");
@@ -17587,7 +17589,7 @@
       [panDown, "\u2193"],
       [panRight, "\u2192"],
       [metaNext, "Command / Windows"],
-      [ctrlSpace, "Ctrl+Space"],
+      [shortcuts, "Shortcuts"],
       [resetKeys, "Reset keys"]
     ]) {
       button.type = "button";
@@ -17600,9 +17602,9 @@
     panRight.title = "Pan right";
     overview.title = "Show a clickable overview of the complete remote desktop";
     metaNext.title = "Apply the remote Command/Windows modifier to the next key only";
-    ctrlSpace.title = "Send remote Control+Space; macOS can use this to change its input source";
+    shortcuts.title = "Open remote Ctrl, Alt, Shift, and Super shortcut controls";
     resetKeys.title = "Release remote modifier keys if a VNC server has left Ctrl, Shift, Alt, or Command/Windows stuck";
-    toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext, ctrlSpace, resetKeys);
+    toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext, shortcuts, resetKeys);
     clipboardPaste.rows = 3;
     clipboardPaste.placeholder = "Local \u2192 VNC: click here, then press Ctrl+V";
     clipboardPaste.title = "Uses a user-initiated paste event when this WebView blocks clipboard reads";
@@ -17615,6 +17617,8 @@
     let rfb;
     let connected = false;
     let zoom = 1;
+    let manualZoomActive = false;
+    let manualZoomRestoreQueued = false;
     let dragPan = null;
     let lastPointer = { x: 24, y: 24 };
     let prefixTimer = null;
@@ -17637,6 +17641,196 @@
     let lastRemoteClipboard = "";
     let remotePasteTimer = null;
     let metaNextArmed = false;
+    let serverVerificationInProgress = false;
+    let connectionFailure = "";
+    const ra2ConnectionId = `ra2-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    let ra2State = null;
+    let ra2StateId = "none";
+    let ra2StateSequence = 0;
+    let ra2Phase = "not-started";
+    let ra2DiagnosticsInstalled = false;
+    let ra2ClientKey = null;
+    let ra2ClientKeyId = "none";
+    let ra2BridgeTraceId = "unopened";
+    let restoreRa2CryptoDiagnostics = () => {
+    };
+    let rawServerRandom = new Uint8Array(0);
+    let rawServerRandomLogged = false;
+    let rawServerRandomCaptureArmed = false;
+    let restoreRa2WebsockReceiveDiagnostics = () => {
+    };
+    const bytesDigest = async (bytes) => {
+      const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    };
+    const logRa2Packet = (direction, label, bytes) => {
+      const packet = new Uint8Array(bytes);
+      bytesDigest(packet).then((sha256) => {
+        api.log(`noVNC RA2ne wire: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} direction=${direction} packet=${label} bytes=${packet.byteLength} sha256=${sha256}`);
+      }).catch((error) => {
+        api.log(`noVNC RA2ne wire digest failed: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} packet=${label} bytes=${packet.byteLength} error=${String(error).slice(0, 160)}`);
+      });
+    };
+    const receiveQueueState = (socket) => {
+      const read = Number(socket?._rQi);
+      const written = Number(socket?._rQlen);
+      return Number.isFinite(read) && Number.isFinite(written) ? `rQi=${read} rQlen=${written} available=${written - read}` : "queue-state=unavailable";
+    };
+    const observeRawServerRandom = (data) => {
+      if (!rawServerRandomCaptureArmed || rawServerRandomLogged) return;
+      let frame;
+      try {
+        if (Object.prototype.toString.call(data) !== "[object ArrayBuffer]") {
+          throw new TypeError("not an ArrayBuffer");
+        }
+        frame = new Uint8Array(data);
+      } catch {
+        api.log(`noVNC RA2ne raw WebSocket frame unavailable: connection=${ra2ConnectionId} state=${ra2StateId} type=${Object.prototype.toString.call(data)}`);
+        return;
+      }
+      api.log(`noVNC RA2ne raw WebSocket frame: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} bytes=${frame.byteLength} ${receiveQueueState(rfb?._sock)}`);
+      const remaining = 258 - rawServerRandom.byteLength;
+      const next = frame.subarray(0, Math.max(0, remaining));
+      const combined = new Uint8Array(rawServerRandom.byteLength + next.byteLength);
+      combined.set(rawServerRandom);
+      combined.set(next, rawServerRandom.byteLength);
+      rawServerRandom = combined;
+      if (rawServerRandom.byteLength !== 258) return;
+      rawServerRandomLogged = true;
+      rawServerRandomCaptureArmed = false;
+      if (rawServerRandom[0] !== 1 || rawServerRandom[1] !== 0) {
+        api.log(`noVNC RA2ne raw WebSocket frame has unexpected ServerRandom length prefix: connection=${ra2ConnectionId} state=${ra2StateId} prefix=${rawServerRandom[0]},${rawServerRandom[1]}`);
+        return;
+      }
+      logRa2Packet("server-to-client", "server-encrypted-random-websocket", rawServerRandom.subarray(2));
+    };
+    const installRa2WebsockReceiveDiagnostics = () => {
+      const socket = rfb?._sock;
+      const rawWebSocket = socket?._websocket;
+      if (!rawWebSocket || typeof rawWebSocket.onmessage !== "function") {
+        api.log(`noVNC RA2ne raw WebSocket capture unavailable: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId}`);
+        return;
+      }
+      const originalMessageHandler = rawWebSocket.onmessage;
+      const wrappedMessageHandler = function receiveRa2WebSocketMessage(event) {
+        observeRawServerRandom(event?.data);
+        return originalMessageHandler.call(this, event);
+      };
+      rawWebSocket.onmessage = wrappedMessageHandler;
+      restoreRa2WebsockReceiveDiagnostics = () => {
+        if (rawWebSocket.onmessage === wrappedMessageHandler) {
+          rawWebSocket.onmessage = originalMessageHandler;
+        }
+        restoreRa2WebsockReceiveDiagnostics = () => {
+        };
+      };
+    };
+    const rememberRa2State = () => {
+      const state = rfb?._rfbRSAAESAuthenticationState || null;
+      if (state && state !== ra2State) {
+        ra2State = state;
+        ra2StateSequence += 1;
+        ra2StateId = `state-${ra2StateSequence}`;
+        api.log(`noVNC RA2ne state created: connection=${ra2ConnectionId} state=${ra2StateId}`);
+      }
+      return state;
+    };
+    const installRa2WireDiagnostics = () => {
+      const socket = rfb?._sock;
+      if (ra2DiagnosticsInstalled || !socket || typeof socket.sQpushBytes !== "function" || typeof socket.rQshiftBytes !== "function") {
+        return;
+      }
+      ra2DiagnosticsInstalled = true;
+      const originalPushBytes = socket.sQpushBytes.bind(socket);
+      const originalShiftBytes = socket.rQshiftBytes.bind(socket);
+      const originalShift16 = socket.rQshift16.bind(socket);
+      socket.sQpushBytes = (bytes) => {
+        const packet = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+        if (ra2Phase === "await-client-public-key" && packet.byteLength === 516 && packet[0] === 0 && packet[1] === 0 && packet[2] === 8 && packet[3] === 0) {
+          ra2Phase = "await-client-encrypted-random";
+          logRa2Packet("client-to-server", "client-public-key", packet);
+        } else if (ra2Phase === "await-client-encrypted-random" && packet.byteLength === 258 && packet[0] === 1 && packet[1] === 0) {
+          ra2Phase = "await-server-encrypted-random";
+          rawServerRandomCaptureArmed = true;
+          api.log(`noVNC RA2ne wire: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} direction=client-to-server packet=client-encrypted-random bytes=${packet.byteLength}`);
+          api.log(`noVNC RA2ne queue before server-random: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} ${receiveQueueState(socket)}`);
+        }
+        return originalPushBytes(bytes);
+      };
+      socket.rQshift16 = () => {
+        const before = receiveQueueState(socket);
+        const value = originalShift16();
+        if (ra2Phase === "await-server-encrypted-random") {
+          api.log(`noVNC RA2ne queue server-random length: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} value=${value} before=${before} after=${receiveQueueState(socket)}`);
+        }
+        return value;
+      };
+      socket.rQshiftBytes = (length, copy = true) => {
+        const before = receiveQueueState(socket);
+        const packet = originalShiftBytes(length, copy);
+        if (ra2Phase === "await-server-encrypted-random" && length === 256) {
+          ra2Phase = "server-encrypted-random-received";
+          logRa2Packet("server-to-client", "server-encrypted-random", packet);
+          api.log(`noVNC RA2ne queue server-random ciphertext: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} before=${before} after=${receiveQueueState(socket)}`);
+        }
+        return packet;
+      };
+      api.log(`noVNC RA2ne wire diagnostics armed: connection=${ra2ConnectionId}`);
+    };
+    const installRa2CryptoDiagnostics = () => {
+      const originalGenerateKey = import_crypto.default.generateKey;
+      const originalExportKey = import_crypto.default.exportKey;
+      const originalDecrypt = import_crypto.default.decrypt;
+      const isRa2ClientKey = (algorithm) => ra2Phase === "await-client-public-key" && algorithm?.name === "RSA-PKCS1-v1_5" && Number(algorithm?.modulusLength) === 2048;
+      const wrappedGenerateKey = function generateRa2ClientKey(algorithm, ...args) {
+        const generated = originalGenerateKey.call(import_crypto.default, algorithm, ...args);
+        if (!isRa2ClientKey(algorithm)) return generated;
+        return Promise.resolve(generated).then((keyPair) => {
+          ra2ClientKey = keyPair?.privateKey || keyPair;
+          ra2ClientKeyId = "client-key-1";
+          api.log(`noVNC RA2ne client key generated: connection=${ra2ConnectionId} state=${ra2StateId} key=${ra2ClientKeyId} privateKeyPresent=${Boolean(keyPair?.privateKey)}`);
+          return keyPair;
+        });
+      };
+      const wrappedExportKey = function exportRa2ClientKey(format, key) {
+        const exported = originalExportKey.call(import_crypto.default, format, key);
+        if (key === ra2ClientKey && format === "raw") {
+          api.log(`noVNC RA2ne client key export: connection=${ra2ConnectionId} state=${ra2StateId} key=${ra2ClientKeyId} matchesGeneratedKey=true`);
+        }
+        return exported;
+      };
+      const wrappedDecrypt = function decryptRa2ServerRandom(algorithm, key, data) {
+        const isServerRandom = key === ra2ClientKey && algorithm?.name === "RSA-PKCS1-v1_5" && Number(data?.byteLength) === 256;
+        try {
+          const decrypted = originalDecrypt.call(import_crypto.default, algorithm, key, data);
+          if (!isServerRandom) return decrypted;
+          return Promise.resolve(decrypted).then((plaintext) => {
+            const result = plaintext === null ? "null" : `plaintext-bytes=${plaintext.byteLength}`;
+            api.log(`noVNC RA2ne client key decrypt: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} key=${ra2ClientKeyId} ciphertext-bytes=256 result=${result}`);
+            return plaintext;
+          }).catch((error) => {
+            api.log(`noVNC RA2ne client key decrypt threw: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} key=${ra2ClientKeyId} ciphertext-bytes=256 error=${String(error).slice(0, 160)}`);
+            throw error;
+          });
+        } catch (error) {
+          if (isServerRandom) {
+            api.log(`noVNC RA2ne client key decrypt threw: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} key=${ra2ClientKeyId} ciphertext-bytes=256 error=${String(error).slice(0, 160)}`);
+          }
+          throw error;
+        }
+      };
+      import_crypto.default.generateKey = wrappedGenerateKey;
+      import_crypto.default.exportKey = wrappedExportKey;
+      import_crypto.default.decrypt = wrappedDecrypt;
+      restoreRa2CryptoDiagnostics = () => {
+        if (import_crypto.default.generateKey === wrappedGenerateKey) import_crypto.default.generateKey = originalGenerateKey;
+        if (import_crypto.default.exportKey === wrappedExportKey) import_crypto.default.exportKey = originalExportKey;
+        if (import_crypto.default.decrypt === wrappedDecrypt) import_crypto.default.decrypt = originalDecrypt;
+        restoreRa2CryptoDiagnostics = () => {
+        };
+      };
+      api.log(`noVNC RA2ne client-key diagnostics armed: connection=${ra2ConnectionId}`);
+    };
     const clipboardText = (value) => {
       const text = String(value || "");
       return new TextEncoder().encode(text).byteLength <= maxClipboardBytes ? text : null;
@@ -17649,37 +17843,6 @@
         remotePasteTimer = null;
       }
     };
-    clipboardPaste.addEventListener("paste", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!clipboardSyncEnabled || !connected || !rfb) return;
-      const text = clipboardText(event.clipboardData?.getData("text/plain") || "");
-      if (text === null) {
-        api.log("noVNC clipboard local-to-remote skipped text over 1048576 bytes");
-        return;
-      }
-      if (!text) {
-        api.log("noVNC clipboard paste event contained no plain text");
-        return;
-      }
-      rfb.clipboardPasteFrom(text);
-      clipboardPaste.value = text;
-      const transport = clipboardTransport();
-      if (forceRfb33) {
-        if (remotePasteTimer !== null) window.clearTimeout(remotePasteTimer);
-        status.textContent = "Local clipboard sent to Vine Server; waiting for the remote pasteboard\u2026";
-        remotePasteTimer = window.setTimeout(() => {
-          remotePasteTimer = null;
-          if (!clipboardSyncEnabled || !connected || !rfb) return;
-          rfb.focus();
-          sendSuperChord("v");
-          status.textContent = "Local clipboard sent to Vine Server and remote Command+V issued.";
-        }, 400);
-      } else {
-        status.textContent = transport.mode === "legacy" ? "Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and use the remote platform paste shortcut; server-side clipboard support may be required." : "Local clipboard sent to VNC. Click the desktop and use the remote platform paste shortcut.";
-      }
-      api.log(`noVNC clipboard local-to-remote announced bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(",") || "none"} actions=${transport.actions.join(",") || "none"}`);
-    });
     const isClipboardPasteEvent = (event) => event.target === clipboardPaste || document.activeElement === clipboardPaste || event.composedPath?.().includes(clipboardPaste);
     const heldModifiers = /* @__PURE__ */ new Map();
     const setToggleAppearance = (button, enabled) => {
@@ -17700,6 +17863,46 @@
       );
       return { mode: formats.length && actions.length ? "extended" : "legacy", formats, actions };
     };
+    const sendLocalClipboard = (value, source) => {
+      if (!clipboardSyncEnabled || !connected || !rfb) {
+        status.textContent = "Clipboard send is unavailable until the VNC connection is ready.";
+        return false;
+      }
+      const text = clipboardText(value);
+      if (text === null) {
+        api.log("noVNC clipboard local-to-remote skipped text over 1048576 bytes");
+        status.textContent = "Clipboard text is over 1 MiB and was not sent.";
+        return false;
+      }
+      if (!text) {
+        api.log("noVNC clipboard paste event contained no plain text");
+        status.textContent = "Clipboard contains no plain text.";
+        return false;
+      }
+      rfb.clipboardPasteFrom(text);
+      clipboardPaste.value = text;
+      const transport = clipboardTransport();
+      if (forceRfb33) {
+        if (remotePasteTimer !== null) window.clearTimeout(remotePasteTimer);
+        status.textContent = "Local clipboard sent to Vine Server; waiting for the remote pasteboard\u2026";
+        remotePasteTimer = window.setTimeout(() => {
+          remotePasteTimer = null;
+          if (!clipboardSyncEnabled || !connected || !rfb) return;
+          rfb.focus();
+          sendSuperChord("v");
+          status.textContent = "Local clipboard sent to Vine Server and remote Command+V issued.";
+        }, 400);
+      } else {
+        status.textContent = transport.mode === "legacy" ? "Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and use the remote platform paste shortcut; server-side clipboard support may be required." : "Local clipboard sent to VNC. Click the desktop and use the remote platform paste shortcut.";
+      }
+      api.log(`noVNC clipboard local-to-remote announced source=${source} bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(",") || "none"} actions=${transport.actions.join(",") || "none"}`);
+      return true;
+    };
+    clipboardPaste.addEventListener("paste", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      sendLocalClipboard(event.clipboardData?.getData("text/plain") || "", "paste-event");
+    });
     const normalizePointerCoordinates = () => {
       const remote = display();
       const canvas = rfb?._canvas;
@@ -17707,7 +17910,7 @@
       remote.absX = (x) => {
         const bounds2 = canvas.getBoundingClientRect();
         const width = Math.max(1, bounds2.width);
-        const pointerOffsetX = 16;
+        const pointerOffsetX = 8;
         return Math.max(0, Math.min(remote.width - 1, Math.floor(x / width * canvas.width + remote._viewportLoc.x + pointerOffsetX)));
       };
       remote.absY = (y) => {
@@ -17724,6 +17927,7 @@
       if (!remote?.width || !remote?.height) return 1;
       return Math.min(screen.clientWidth / remote.width, screen.clientHeight / remote.height);
     };
+    const currentZoom = () => !manualZoomActive && rfb?.scaleViewport ? fittedScale() : zoom;
     const drawNavigator = () => {
       const remote = display();
       const position = viewport();
@@ -17746,18 +17950,46 @@
         Math.min(drawHeight, position.h / remote.height * drawHeight)
       );
     };
+    const applyManualViewport = () => {
+      const remote = display();
+      if (!remote || zoom <= 0) return null;
+      const host = rfb?._screen || screen;
+      const width = Math.max(1, Math.floor(host.clientWidth / zoom));
+      const height = Math.max(1, Math.floor(host.clientHeight / zoom));
+      remote.scale = zoom;
+      remote.viewportChangeSize(width, height);
+      remote.scale = zoom;
+      return remote;
+    };
+    const restoreManualViewportSoon = () => {
+      if (!manualZoomActive || manualZoomRestoreQueued) return;
+      manualZoomRestoreQueued = true;
+      window.requestAnimationFrame(() => {
+        manualZoomRestoreQueued = false;
+        if (!manualZoomActive || !rfb) return;
+        if (applyManualViewport()) drawNavigator();
+      });
+    };
+    const installManualZoomGuard = () => {
+      if (!rfb || rfb._fpasotermManualZoomGuard || typeof rfb._updateScale !== "function") return;
+      const updateScale = rfb._updateScale;
+      rfb._updateScale = function updateScaleWithManualZoom(...args) {
+        const result = updateScale.apply(this, args);
+        restoreManualViewportSoon();
+        return result;
+      };
+      rfb._fpasotermManualZoomGuard = true;
+    };
     const enablePan = (preserveFitScale = false) => {
       if (!rfb) return null;
-      const remote = display();
-      if (preserveFitScale && rfb.scaleViewport) zoom = fittedScale();
-      rfb.scaleViewport = false;
-      rfb.clipViewport = true;
-      if (remote && zoom > 0) {
-        remote.scale = zoom;
-        remote.viewportChangeSize(screen.clientWidth / zoom, screen.clientHeight / zoom);
-      }
+      if (preserveFitScale && !manualZoomActive && rfb.scaleViewport) zoom = fittedScale();
+      manualZoomActive = true;
+      if (rfb.scaleViewport) rfb.scaleViewport = false;
+      if (!rfb.clipViewport) rfb.clipViewport = true;
+      const remote = applyManualViewport();
+      restoreManualViewportSoon();
       drawNavigator();
-      return display();
+      return remote;
     };
     const panBy = (left, top) => {
       const remote = enablePan(true);
@@ -17766,7 +17998,7 @@
       drawNavigator();
       const position = viewport();
       api.log(`noVNC pan: x=${position.x}, y=${position.y}, viewport=${position.w}x${position.h}, framebuffer=${remote.width}x${remote.height}`);
-      status.textContent = "Panning at 100%. Enable Pan to drag with the mouse.";
+      status.textContent = `Panning at ${Math.round(zoom * 100)}%.`;
     };
     const toggleModifier = (button, name, keysym, code) => {
       if (!rfb) return;
@@ -17926,19 +18158,24 @@
       const escapeButton = escapeKey;
       const tabButton = document.createElement("button");
       const closeButton = document.createElement("button");
+      title.textContent = "VNC Shortcuts (drag):";
       control.textContent = "Ctrl";
       alt.textContent = "Alt";
       shift.textContent = "Shift";
       superKey.textContent = "Super";
+      ctrlSpace.textContent = "Ctrl+Space";
       escapeButton.textContent = "Esc";
       tabButton.textContent = "Tab";
-      closeButton.textContent = "Close";
+      closeButton.textContent = "\xD7";
+      closeButton.title = "Close VNC Shortcuts";
+      closeButton.setAttribute("aria-label", "Close VNC Shortcuts");
       shield.style.cssText = "position:absolute;inset:0;z-index:2147483647;pointer-events:auto;background:transparent";
       palette.style.cssText = `position:absolute;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
       palette.style.pointerEvents = "auto";
       palette.tabIndex = 0;
       palette.setAttribute("aria-label", "VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord");
-      for (const button of [...keyButtons, escapeButton, tabButton, closeButton]) {
+      title.style.cssText = "cursor:grab;user-select:none;touch-action:none";
+      for (const button of [...keyButtons, ctrlSpace, escapeButton, tabButton, closeButton]) {
         button.type = "button";
         button.style.cssText = "padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc";
       }
@@ -17946,6 +18183,10 @@
       alt.onclick = () => toggleModifier(alt, "Alt", import_keysym.default.XK_Alt_L, "AltLeft");
       shift.onclick = () => toggleModifier(shift, "Shift", import_keysym.default.XK_Shift_L, "ShiftLeft");
       superKey.onclick = () => toggleModifier(superKey, "Super", remoteSuperKeysym, remoteSuperCode);
+      ctrlSpace.onclick = () => {
+        sendMacInputSourceShortcut();
+        dismissPrefixPalette();
+      };
       escapeButton.onclick = () => {
         sendChord([], "", "Escape", import_keysym.default.XK_Escape);
         api.log("noVNC palette key sent: Escape");
@@ -17957,6 +18198,43 @@
         dismissPrefixPalette();
       };
       closeButton.onclick = dismissPrefixPalette;
+      let paletteDrag = null;
+      const stopPaletteDrag = (event) => {
+        if (!paletteDrag || paletteDrag.pointerId !== event.pointerId) return;
+        title.releasePointerCapture?.(event.pointerId);
+        paletteDrag = null;
+        title.style.cursor = "grab";
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      title.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        const paletteBounds = palette.getBoundingClientRect();
+        paletteDrag = {
+          pointerId: event.pointerId,
+          offsetX: event.clientX - paletteBounds.left,
+          offsetY: event.clientY - paletteBounds.top
+        };
+        title.setPointerCapture?.(event.pointerId);
+        title.style.cursor = "grabbing";
+        palette.focus({ preventScroll: true });
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      title.addEventListener("pointermove", (event) => {
+        if (!paletteDrag || paletteDrag.pointerId !== event.pointerId) return;
+        const screenBounds = screen.getBoundingClientRect();
+        const left = event.clientX - screenBounds.left - paletteDrag.offsetX;
+        const top = event.clientY - screenBounds.top - paletteDrag.offsetY;
+        const maxLeft = Math.max(8, screen.clientWidth - palette.offsetWidth - 8);
+        const maxTop = Math.max(8, screen.clientHeight - palette.offsetHeight - 8);
+        palette.style.left = `${Math.max(8, Math.min(maxLeft, left))}px`;
+        palette.style.top = `${Math.max(8, Math.min(maxTop, top))}px`;
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      title.addEventListener("pointerup", stopPaletteDrag);
+      title.addEventListener("pointercancel", stopPaletteDrag);
       for (const eventName of ["pointerdown", "pointermove", "pointerup", "mousedown", "mousemove", "mouseup", "click"]) {
         palette.addEventListener(eventName, (event) => event.stopPropagation());
         shield.addEventListener(eventName, (event) => event.stopPropagation());
@@ -17979,7 +18257,7 @@
         releaseModifiers();
         dismissPrefixPalette();
       });
-      palette.append(title, ...keyButtons, escapeButton, tabButton, closeButton);
+      palette.append(title, ...keyButtons, ctrlSpace, escapeButton, tabButton, closeButton);
       shield.append(palette);
       screen.append(shield);
       prefixShield = shield;
@@ -18005,25 +18283,34 @@
       status.textContent = `Manual zoom: ${Math.round(zoom * 100)}%`;
     };
     zoomOut.addEventListener("click", () => {
-      zoom = Math.max(0.1, zoom - 0.1);
+      zoom = Math.max(0.1, currentZoom() - 0.1);
       applyZoom();
     });
     zoomIn.addEventListener("click", () => {
-      zoom = Math.min(2.5, zoom + 0.1);
+      zoom = Math.min(2.5, currentZoom() + 0.1);
       applyZoom();
     });
     metaNext.addEventListener("click", () => {
       setMetaNextArmed(!metaNextArmed);
       rfb?.focus();
     });
-    ctrlSpace.addEventListener("click", sendMacInputSourceShortcut);
+    shortcuts.addEventListener("click", () => {
+      if (!connected || !rfb) {
+        status.textContent = "VNC Shortcuts are unavailable until the VNC connection is ready.";
+        return;
+      }
+      dismissPrefixPalette();
+      showPrefixPalette();
+      status.textContent = "VNC Shortcuts opened.";
+    });
     resetKeys.addEventListener("click", resetRemoteKeys);
     fit.addEventListener("click", () => {
       if (rfb) {
+        manualZoomActive = false;
         rfb.clipViewport = false;
         rfb.scaleViewport = true;
         requestAnimationFrame(() => {
-          zoom = fittedScale();
+          if (!manualZoomActive) zoom = fittedScale();
         });
       }
       navigator2.style.display = "none";
@@ -18038,11 +18325,9 @@
     panUp.addEventListener("click", () => panBy(0, -screen.clientHeight * 0.1));
     panDown.addEventListener("click", () => panBy(0, screen.clientHeight * 0.1));
     navigator2.addEventListener("click", (event) => {
-      if (zoom < 1.5) {
-        zoom = 1.5;
-        applyZoom();
-      }
-      const remote = enablePan();
+      if (!manualZoomActive && rfb?.scaleViewport) zoom = fittedScale();
+      if (zoom < 1.5) zoom = 1.5;
+      const remote = enablePan(false);
       const position = viewport();
       if (!remote || !position) return;
       const box = navigator2.getBoundingClientRect();
@@ -18081,6 +18366,12 @@
     panCapture.addEventListener("pointercancel", stopDragPan);
     try {
       const bridgeUrl = await api.openVncBridge({ target: "tcp://127.0.0.1:53390" });
+      try {
+        ra2BridgeTraceId = new URL(bridgeUrl).searchParams.get("trace") || "missing";
+      } catch {
+        ra2BridgeTraceId = "invalid-url";
+      }
+      api.log(`noVNC RA2ne trace: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId}`);
       status.textContent = "Connecting to the configured verification target through the local bridge\u2026";
       const username = await api.promptText({
         title: "VNC username",
@@ -18101,13 +18392,33 @@
         return;
       }
       rfb = new import_rfb.default(screen, bridgeUrl, { credentials: { username, password } });
+      installRa2WebsockReceiveDiagnostics();
+      installRa2WireDiagnostics();
+      installRa2CryptoDiagnostics();
+      if (typeof rfb._fail === "function") {
+        const originalFail = rfb._fail.bind(rfb);
+        rfb._fail = (details) => {
+          const detail = String(details || "unknown VNC protocol failure").trim().slice(0, 240);
+          const rfbVersion = Number.isFinite(Number(rfb._rfbVersion)) ? rfb._rfbVersion : "unknown";
+          const securityType = Number.isFinite(Number(rfb._rfbAuthScheme)) ? rfb._rfbAuthScheme : "unknown";
+          const handshakeStage = String(rfb._rfbInitState || "unknown");
+          connectionFailure = `VNC protocol failure: ${detail}`;
+          status.textContent = connectionFailure;
+          api.log(`noVNC protocol failure: ${detail}; rfb=${rfbVersion}; security=${securityType}; stage=${handshakeStage}; ra2Connection=${ra2ConnectionId}; ra2State=${ra2StateId}; ra2Phase=${ra2Phase}`);
+          return originalFail(details);
+        };
+      }
       if (forceRfb33) {
         rfb._rfbMaxVersion = 3.3;
         rfb._sendEncodings = function sendVineEncodings() {
           import_rfb.default.messages.clientEncodings(this._sock, [5, 0]);
         };
         api.log("noVNC compatibility: forcing RFB 3.3 with Hextile/Raw for Vine Server");
+      } else {
+        api.log("noVNC transport: automatic RFB negotiation (maximum 3.8)");
       }
+      installManualZoomGuard();
+      manualZoomActive = false;
       rfb.scaleViewport = true;
       rfb.resizeSession = false;
       reportFramebuffer("RFB created");
@@ -18216,11 +18527,7 @@
           }
           if (/^Key[A-Z]$/.test(keyEvent.code)) {
             handledHostKeyEvents.add(keyEvent);
-            if (forceRfb33 && !keyEvent.shiftKey && (keyEvent.code === "KeyC" || keyEvent.code === "KeyV")) {
-              sendSuperChord(keyEvent.key);
-            } else {
-              sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
-            }
+            sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
             return true;
           }
           return false;
@@ -18309,11 +18616,7 @@
           keyEvent.preventDefault();
           keyEvent.stopImmediatePropagation();
           capturedControlKeys.add(keyEvent.code);
-          if (forceRfb33 && (keyEvent.code === "KeyC" || keyEvent.code === "KeyV")) {
-            sendSuperChord(keyEvent.key);
-          } else {
-            sendCtrlChord(keyEvent.key);
-          }
+          sendCtrlChord(keyEvent.key);
         };
         const keyboardCanvas = rfb._canvas;
         const keyboardTargets = [document, keyboardCanvas];
@@ -18347,6 +18650,7 @@
           }
         };
         requestAnimationFrame(() => {
+          manualZoomActive = false;
           rfb.scaleViewport = true;
           zoom = fittedScale();
           normalizePointerCoordinates();
@@ -18379,6 +18683,8 @@
         }
       });
       rfb.addEventListener("disconnect", (event) => {
+        restoreRa2WebsockReceiveDiagnostics();
+        restoreRa2CryptoDiagnostics();
         stopClipboardSync();
         removePrefixListener();
         releaseHostKeyCapture();
@@ -18386,12 +18692,107 @@
         dismissPrefixPalette();
         for (const modifier of heldModifiers.values()) setToggleAppearance(modifier.button, false);
         heldModifiers.clear();
-        status.textContent = event.detail?.clean ? "Disconnected." : "Connection closed unexpectedly. Check Plugin Activity.";
-        api.log(`noVNC disconnected: clean=${Boolean(event.detail?.clean)}`);
+        const clean = Boolean(event.detail?.clean);
+        status.textContent = connectionFailure || (clean ? "Disconnected." : "Connection closed unexpectedly. Check Plugin Activity.");
+        api.log(`noVNC disconnected: clean=${clean}${connectionFailure ? ` failure=${connectionFailure}` : ""}`);
       });
       rfb.addEventListener("securityfailure", (event) => {
-        api.log(`noVNC security failure: ${JSON.stringify(event.detail || {})}`);
-        status.textContent = "VNC security negotiation failed. Check Plugin Activity.";
+        const detail = event.detail || {};
+        const reason = typeof detail.reason === "string" && detail.reason.trim() ? detail.reason.trim().slice(0, 240) : "";
+        const securityStatus = Number.isFinite(Number(detail.status)) ? ` (status ${detail.status})` : "";
+        connectionFailure = `VNC security negotiation failed${securityStatus}${reason ? `: ${reason}` : "."}`;
+        api.log(`noVNC security failure: ${JSON.stringify(detail)}`);
+        status.textContent = connectionFailure;
+      });
+      rfb.addEventListener("serververification", async (event) => {
+        if (connected || serverVerificationInProgress) {
+          api.log("noVNC ignored an unexpected duplicate server-key verification request");
+          return;
+        }
+        serverVerificationInProgress = true;
+        const verificationState = rememberRa2State();
+        if (!verificationState) {
+          connectionFailure = "VNC server key verification lost its RA2ne state.";
+          status.textContent = connectionFailure;
+          api.log(`noVNC RA2ne state missing at server-key verification: connection=${ra2ConnectionId}`);
+          rfb.disconnect();
+          serverVerificationInProgress = false;
+          return;
+        }
+        ra2Phase = "await-server-key-approval";
+        const detail = event.detail || {};
+        const publickey = detail.publickey instanceof Uint8Array ? detail.publickey : new Uint8Array(detail.publickey || []);
+        let fingerprint = "unavailable";
+        try {
+          const digest = await crypto.subtle.digest("SHA-256", publickey);
+          fingerprint = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(":");
+        } catch (error) {
+          api.log(`noVNC server-key fingerprint calculation failed: ${error}`);
+        }
+        const keyType = String(detail.type || "unknown");
+        api.log(`noVNC server-key verification requested type=${keyType} bytes=${publickey.byteLength} sha256=${fingerprint}; connection=${ra2ConnectionId}; state=${ra2StateId}`);
+        status.textContent = "VNC server key verification required.";
+        let approved = false;
+        try {
+          if (typeof api.promptConfirm !== "function") {
+            api.log("noVNC server-key verification: host lacks promptConfirm; using legacy confirmation prompt");
+            const legacyApproval = await api.promptText({
+              title: "Verify VNC server key",
+              message: `Security type: ${keyType}
+SHA-256: ${fingerprint}
+
+Compare this fingerprint with a trusted server administrator when possible. Select Trust and continue to approve this server key for this connection only. The text field is ignored.`,
+              approve: "Trust and continue"
+            });
+            approved = legacyApproval !== null;
+          } else {
+            approved = await api.promptConfirm({
+              title: "Verify VNC server key",
+              message: `Security type: ${keyType}
+SHA-256: ${fingerprint}
+
+Compare this fingerprint with a trusted server administrator when possible. Select Trust and continue to approve this server key for this connection only.`,
+              approve: "Trust and continue",
+              cancel: "Reject"
+            });
+          }
+        } catch (error) {
+          connectionFailure = "VNC server key confirmation could not be displayed.";
+          status.textContent = connectionFailure;
+          api.log(`noVNC server-key verification prompt failed: ${error}`);
+          rfb.disconnect();
+          return;
+        } finally {
+          serverVerificationInProgress = false;
+        }
+        if (!approved) {
+          connectionFailure = "VNC server key was not approved; connection cancelled.";
+          status.textContent = connectionFailure;
+          api.log("noVNC server-key verification rejected by user");
+          rfb.disconnect();
+          return;
+        }
+        if (typeof rfb.approveServer !== "function") {
+          connectionFailure = "This noVNC build cannot approve the requested server key.";
+          status.textContent = connectionFailure;
+          api.log("noVNC server-key verification failed: approveServer is unavailable");
+          rfb.disconnect();
+          return;
+        }
+        const approvalState = rfb._rfbRSAAESAuthenticationState || null;
+        const stateMatches = approvalState === verificationState;
+        api.log(`noVNC RA2ne server-key approval state: connection=${ra2ConnectionId} state=${ra2StateId} matchesVerification=${stateMatches}`);
+        if (!stateMatches) {
+          connectionFailure = "VNC server key verification state changed before approval.";
+          status.textContent = connectionFailure;
+          api.log(`noVNC RA2ne state mismatch before server-key approval: connection=${ra2ConnectionId} expected=${ra2StateId}`);
+          rfb.disconnect();
+          return;
+        }
+        ra2Phase = "await-client-public-key";
+        rfb.approveServer();
+        status.textContent = "VNC server key approved; continuing authentication\u2026";
+        api.log(`noVNC server-key approved for this connection; connection=${ra2ConnectionId}; state=${ra2StateId}`);
       });
       rfb.addEventListener("credentialsrequired", async (event) => {
         if (connected) {
@@ -18417,6 +18818,8 @@
         if (!connected) rfb.sendCredentials(credentials);
       });
     } catch (error) {
+      restoreRa2WebsockReceiveDiagnostics();
+      restoreRa2CryptoDiagnostics();
       status.textContent = `Could not start noVNC: ${String(error)}`;
       api.log(`integration/novnc-local-bridge failed: ${String(error)}`);
     }
