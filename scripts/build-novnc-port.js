@@ -49,6 +49,12 @@ function declaredTarget(source) {
   return match[1];
 }
 
+// noVNC 1.5.0 waits for RA2ne's two-byte ciphertext length but immediately
+// shifts the following 256-byte ciphertext. When the server sends those in
+// distinct WebSocket frames, rQshiftBytes reads beyond the available queue.
+// Patch the bundled dependency in memory so `npm ci` remains reproducible and
+// no modified node_modules file is required. The source is MPL-2.0 and its
+// license notice remains in the bundled noVNC code.
 function build() {
   const target = declaredTarget(fs.readFileSync(entry, 'utf8'));
   esbuild.buildSync({
@@ -58,7 +64,7 @@ function build() {
     target: 'es2020',
     banner: {
       js: [
-        '// @fpasoterm-plugin version: 1.0.5',
+        '// @fpasoterm-plugin version: 1.0.6',
         '// @fpasoterm-plugin description: Verification noVNC client for the strictly declared local TCP bridge.',
         `// @fpasoterm-plugin allowed-tcp-targets: ${target}`,
       ].join('\n'),

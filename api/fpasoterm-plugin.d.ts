@@ -108,6 +108,8 @@ type FpasotermPluginApi = {
   promptSecret: (options?: { title?: string; message?: string; approve?: string }) => Promise<string | null>;
   /** Prompts for non-secret connection text without persisting or logging it. */
   promptText: (options?: { title?: string; message?: string; approve?: string }) => Promise<string | null>;
+  /** Presents a button-only, in-memory confirmation dialog. */
+  promptConfirm: (options?: { title?: string; message?: string; approve?: string; cancel?: string }) => Promise<boolean>;
   /** Closes this plugin's outstanding credential prompts. */
   dismissPrompts: () => void;
   onReady: (callback: () => void) => void;

@@ -1,12 +1,13 @@
 import RFB from '@novnc/novnc/lib/rfb.js';
 import Keysyms from '@novnc/novnc/lib/input/keysym.js';
+import Crypto from '@novnc/novnc/lib/crypto/crypto.js';
 
 const api = window.fpasotermPluginApi;
-// Vine Server advertises RFB 3.8 but some releases stop before sending the
-// security-type list unless the client negotiates RFB 3.3.  Keep the reviewed
-// public port on modern negotiation; the configure command can opt a generated
-// private-target build into the compatibility mode.
-const forceRfb33 = true;
+// Use modern RFB negotiation by default. Some historical Vine Server releases
+// stop before sending the security-type list unless the client negotiates RFB
+// 3.3; a port author can opt a private-target build into that compatibility
+// mode with `configure -- ... --rfb-3.3`.
+const forceRfb33 = false;
 
 api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', async () => {
   // Vine maps X11 Super/Meta to macOS Option (for example +V produces √).
@@ -28,6 +29,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   const panRight = document.createElement('button');
   const metaNext = document.createElement('button');
   const ctrlSpace = document.createElement('button');
+  const shortcuts = document.createElement('button');
   const resetKeys = document.createElement('button');
   const clipboardPaste = document.createElement('textarea');
   const control = document.createElement('button');
@@ -56,7 +58,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   for (const [button, label] of [
     [zoomOut, 'Zoom −'], [zoomIn, 'Zoom +'], [fit, 'Fit'], [overview, 'Overview'],
     [panLeft, '←'], [panUp, '↑'], [panDown, '↓'], [panRight, '→'],
-    [metaNext, 'Command / Windows'], [ctrlSpace, 'Ctrl+Space'], [resetKeys, 'Reset keys'],
+    [metaNext, 'Command / Windows'], [shortcuts, 'Shortcuts'], [resetKeys, 'Reset keys'],
   ]) {
     button.type = 'button'; button.textContent = label;
     button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
@@ -65,9 +67,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panDown.title = 'Pan down'; panRight.title = 'Pan right';
   overview.title = 'Show a clickable overview of the complete remote desktop';
   metaNext.title = 'Apply the remote Command/Windows modifier to the next key only';
-  ctrlSpace.title = 'Send remote Control+Space; macOS can use this to change its input source';
+  shortcuts.title = 'Open remote Ctrl, Alt, Shift, and Super shortcut controls';
   resetKeys.title = 'Release remote modifier keys if a VNC server has left Ctrl, Shift, Alt, or Command/Windows stuck';
-  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext, ctrlSpace, resetKeys);
+  toolbar.append(status, zoomOut, zoomIn, fit, overview, panLeft, panUp, panDown, panRight, metaNext, shortcuts, resetKeys);
   clipboardPaste.rows = 3;
   clipboardPaste.placeholder = 'Local → VNC: click here, then press Ctrl+V';
   clipboardPaste.title = 'Uses a user-initiated paste event when this WebView blocks clipboard reads';
@@ -80,6 +82,11 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let rfb;
   let connected = false;
   let zoom = 1;
+  // noVNC only supports its automatic Fit scale or its native 100% scale.
+  // Keep this separate from `zoom`: it records that this plugin owns the
+  // Display scale and must restore it after noVNC handles a layout change.
+  let manualZoomActive = false;
+  let manualZoomRestoreQueued = false;
   let dragPan = null;
   let lastPointer = { x: 24, y: 24 };
   let prefixTimer = null;
@@ -102,6 +109,241 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   let lastRemoteClipboard = '';
   let remotePasteTimer = null;
   let metaNextArmed = false;
+  let serverVerificationInProgress = false;
+  let connectionFailure = '';
+  // RA2ne diagnostics intentionally expose no key material, random values,
+  // credentials, or raw traffic.  They provide enough connection-scoped
+  // identity and SHA-256 digests for the VNC server to compare the public
+  // client key and encrypted server-random byte-for-byte with what noVNC
+  // received through the loopback WebSocket bridge.
+  const ra2ConnectionId = `ra2-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  let ra2State = null;
+  let ra2StateId = 'none';
+  let ra2StateSequence = 0;
+  let ra2Phase = 'not-started';
+  let ra2DiagnosticsInstalled = false;
+  let ra2ClientKey = null;
+  let ra2ClientKeyId = 'none';
+  let ra2BridgeTraceId = 'unopened';
+  let restoreRa2CryptoDiagnostics = () => {};
+  let rawServerRandom = new Uint8Array(0);
+  let rawServerRandomLogged = false;
+  let rawServerRandomCaptureArmed = false;
+  let restoreRa2WebsockReceiveDiagnostics = () => {};
+  let restoreVncBridgeCloseDiagnostics = () => {};
+  const bytesDigest = async (bytes) => {
+    const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  };
+  const logRa2Packet = (direction, label, bytes) => {
+    const packet = new Uint8Array(bytes);
+    bytesDigest(packet).then((sha256) => {
+      api.log(`noVNC RA2ne wire: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} direction=${direction} packet=${label} bytes=${packet.byteLength} sha256=${sha256}`);
+    }).catch((error) => {
+      api.log(`noVNC RA2ne wire digest failed: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} packet=${label} bytes=${packet.byteLength} error=${String(error).slice(0, 160)}`);
+    });
+  };
+  const receiveQueueState = (socket) => {
+    const read = Number(socket?._rQi);
+    const written = Number(socket?._rQlen);
+    return Number.isFinite(read) && Number.isFinite(written)
+      ? `rQi=${read} rQlen=${written} available=${written - read}`
+      : 'queue-state=unavailable';
+  };
+  const observeRawServerRandom = (data) => {
+    if (!rawServerRandomCaptureArmed || rawServerRandomLogged) return;
+    let frame;
+    try {
+      // A Tauri WebView event can originate in another JavaScript Realm.
+      // `instanceof ArrayBuffer` then returns false for a valid binary
+      // WebSocket payload, so use its cross-Realm brand instead.
+      if (Object.prototype.toString.call(data) !== '[object ArrayBuffer]') {
+        throw new TypeError('not an ArrayBuffer');
+      }
+      frame = new Uint8Array(data);
+    } catch {
+      api.log(`noVNC RA2ne raw WebSocket frame unavailable: connection=${ra2ConnectionId} state=${ra2StateId} type=${Object.prototype.toString.call(data)}`);
+      return;
+    }
+    api.log(`noVNC RA2ne raw WebSocket frame: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} bytes=${frame.byteLength} ${receiveQueueState(rfb?._sock)}`);
+    const remaining = 258 - rawServerRandom.byteLength;
+    const next = frame.subarray(0, Math.max(0, remaining));
+    const combined = new Uint8Array(rawServerRandom.byteLength + next.byteLength);
+    combined.set(rawServerRandom);
+    combined.set(next, rawServerRandom.byteLength);
+    rawServerRandom = combined;
+    if (rawServerRandom.byteLength !== 258) return;
+    rawServerRandomLogged = true;
+    rawServerRandomCaptureArmed = false;
+    if (rawServerRandom[0] !== 1 || rawServerRandom[1] !== 0) {
+      api.log(`noVNC RA2ne raw WebSocket frame has unexpected ServerRandom length prefix: connection=${ra2ConnectionId} state=${ra2StateId} prefix=${rawServerRandom[0]},${rawServerRandom[1]}`);
+      return;
+    }
+    logRa2Packet('server-to-client', 'server-encrypted-random-websocket', rawServerRandom.subarray(2));
+  };
+  const installRa2WebsockReceiveDiagnostics = () => {
+    const socket = rfb?._sock;
+    const rawWebSocket = socket?._websocket;
+    if (!rawWebSocket || typeof rawWebSocket.onmessage !== 'function') {
+      api.log(`noVNC RA2ne raw WebSocket capture unavailable: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId}`);
+      return;
+    }
+    const originalMessageHandler = rawWebSocket.onmessage;
+    const wrappedMessageHandler = function receiveRa2WebSocketMessage(event) {
+      observeRawServerRandom(event?.data);
+      return originalMessageHandler.call(this, event);
+    };
+    rawWebSocket.onmessage = wrappedMessageHandler;
+    restoreRa2WebsockReceiveDiagnostics = () => {
+      if (rawWebSocket.onmessage === wrappedMessageHandler) {
+        rawWebSocket.onmessage = originalMessageHandler;
+      }
+      restoreRa2WebsockReceiveDiagnostics = () => {};
+    };
+  };
+  const installVncBridgeCloseDiagnostics = () => {
+    const rawWebSocket = rfb?._sock?._websocket;
+    if (!rawWebSocket || typeof rawWebSocket.addEventListener !== 'function') {
+      api.log(`noVNC bridge close diagnostics unavailable: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId}`);
+      return;
+    }
+    const reportClose = (event) => {
+      if (connected || connectionFailure) return;
+      const reason = typeof event?.reason === 'string' ? event.reason.trim().slice(0, 240) : '';
+      const code = Number.isFinite(Number(event?.code)) ? ` (WebSocket code ${Number(event.code)})` : '';
+      connectionFailure = `VNC bridge closed before connection${reason ? `: ${reason}` : code}. Verify the configured target, firewall, and Plugin Activity.`;
+      status.textContent = connectionFailure;
+      api.log(`noVNC bridge closed before connection: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId}${code}${reason ? ` reason=${reason}` : ''}`);
+    };
+    rawWebSocket.addEventListener('close', reportClose);
+    restoreVncBridgeCloseDiagnostics = () => {
+      rawWebSocket.removeEventListener('close', reportClose);
+      restoreVncBridgeCloseDiagnostics = () => {};
+    };
+  };
+  const rememberRa2State = () => {
+    const state = rfb?._rfbRSAAESAuthenticationState || null;
+    if (state && state !== ra2State) {
+      ra2State = state;
+      ra2StateSequence += 1;
+      ra2StateId = `state-${ra2StateSequence}`;
+      api.log(`noVNC RA2ne state created: connection=${ra2ConnectionId} state=${ra2StateId}`);
+    }
+    return state;
+  };
+  const installRa2WireDiagnostics = () => {
+    const socket = rfb?._sock;
+    if (ra2DiagnosticsInstalled || !socket
+      || typeof socket.sQpushBytes !== 'function' || typeof socket.rQshiftBytes !== 'function') {
+      return;
+    }
+    ra2DiagnosticsInstalled = true;
+    const originalPushBytes = socket.sQpushBytes.bind(socket);
+    const originalShiftBytes = socket.rQshiftBytes.bind(socket);
+    const originalShift16 = socket.rQshift16.bind(socket);
+    socket.sQpushBytes = (bytes) => {
+      const packet = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+      if (ra2Phase === 'await-client-public-key'
+        && packet.byteLength === 516
+        && packet[0] === 0 && packet[1] === 0 && packet[2] === 8 && packet[3] === 0) {
+        ra2Phase = 'await-client-encrypted-random';
+        logRa2Packet('client-to-server', 'client-public-key', packet);
+      } else if (ra2Phase === 'await-client-encrypted-random'
+        && packet.byteLength === 258
+        && packet[0] === 1 && packet[1] === 0) {
+        ra2Phase = 'await-server-encrypted-random';
+        rawServerRandomCaptureArmed = true;
+        // The encrypted client random is intentionally represented only by
+        // its length. It is not needed to prove the server-to-client path.
+        api.log(`noVNC RA2ne wire: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} direction=client-to-server packet=client-encrypted-random bytes=${packet.byteLength}`);
+        api.log(`noVNC RA2ne queue before server-random: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} ${receiveQueueState(socket)}`);
+      }
+      return originalPushBytes(bytes);
+    };
+    socket.rQshift16 = () => {
+      const before = receiveQueueState(socket);
+      const value = originalShift16();
+      if (ra2Phase === 'await-server-encrypted-random') {
+        api.log(`noVNC RA2ne queue server-random length: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} value=${value} before=${before} after=${receiveQueueState(socket)}`);
+      }
+      return value;
+    };
+    socket.rQshiftBytes = (length, copy = true) => {
+      const before = receiveQueueState(socket);
+      const packet = originalShiftBytes(length, copy);
+      if (ra2Phase === 'await-server-encrypted-random' && length === 256) {
+        ra2Phase = 'server-encrypted-random-received';
+        logRa2Packet('server-to-client', 'server-encrypted-random', packet);
+        api.log(`noVNC RA2ne queue server-random ciphertext: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} before=${before} after=${receiveQueueState(socket)}`);
+      }
+      return packet;
+    };
+    api.log(`noVNC RA2ne wire diagnostics armed: connection=${ra2ConnectionId}`);
+  };
+  const installRa2CryptoDiagnostics = () => {
+    const originalGenerateKey = Crypto.generateKey;
+    const originalExportKey = Crypto.exportKey;
+    const originalDecrypt = Crypto.decrypt;
+    const isRa2ClientKey = (algorithm) => (
+      ra2Phase === 'await-client-public-key'
+      && algorithm?.name === 'RSA-PKCS1-v1_5'
+      && Number(algorithm?.modulusLength) === 2048
+    );
+    const wrappedGenerateKey = function generateRa2ClientKey(algorithm, ...args) {
+      const generated = originalGenerateKey.call(Crypto, algorithm, ...args);
+      if (!isRa2ClientKey(algorithm)) return generated;
+      // LegacyCrypto's RSA generator is async.  The RA2 state awaits this
+      // promise and then passes `keyPair.privateKey` to both exportKey and
+      // decrypt, so record the identity only after it resolves.
+      return Promise.resolve(generated).then((keyPair) => {
+        ra2ClientKey = keyPair?.privateKey || keyPair;
+        ra2ClientKeyId = 'client-key-1';
+        api.log(`noVNC RA2ne client key generated: connection=${ra2ConnectionId} state=${ra2StateId} key=${ra2ClientKeyId} privateKeyPresent=${Boolean(keyPair?.privateKey)}`);
+        return keyPair;
+      });
+    };
+    const wrappedExportKey = function exportRa2ClientKey(format, key) {
+      const exported = originalExportKey.call(Crypto, format, key);
+      if (key === ra2ClientKey && format === 'raw') {
+        api.log(`noVNC RA2ne client key export: connection=${ra2ConnectionId} state=${ra2StateId} key=${ra2ClientKeyId} matchesGeneratedKey=true`);
+      }
+      return exported;
+    };
+    const wrappedDecrypt = function decryptRa2ServerRandom(algorithm, key, data) {
+      const isServerRandom = key === ra2ClientKey
+        && algorithm?.name === 'RSA-PKCS1-v1_5'
+        && Number(data?.byteLength) === 256;
+      try {
+        const decrypted = originalDecrypt.call(Crypto, algorithm, key, data);
+        if (!isServerRandom) return decrypted;
+        // Legacy RSA decrypt is async; preserve the Promise contract that
+        // RA2 awaits, but log the resolved result rather than the Promise.
+        return Promise.resolve(decrypted).then((plaintext) => {
+          const result = plaintext === null ? 'null' : `plaintext-bytes=${plaintext.byteLength}`;
+          api.log(`noVNC RA2ne client key decrypt: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} key=${ra2ClientKeyId} ciphertext-bytes=256 result=${result}`);
+          return plaintext;
+        }).catch((error) => {
+          api.log(`noVNC RA2ne client key decrypt threw: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} key=${ra2ClientKeyId} ciphertext-bytes=256 error=${String(error).slice(0, 160)}`);
+          throw error;
+        });
+      } catch (error) {
+        if (isServerRandom) {
+          api.log(`noVNC RA2ne client key decrypt threw: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId} state=${ra2StateId} key=${ra2ClientKeyId} ciphertext-bytes=256 error=${String(error).slice(0, 160)}`);
+        }
+        throw error;
+      }
+    };
+    Crypto.generateKey = wrappedGenerateKey;
+    Crypto.exportKey = wrappedExportKey;
+    Crypto.decrypt = wrappedDecrypt;
+    restoreRa2CryptoDiagnostics = () => {
+      if (Crypto.generateKey === wrappedGenerateKey) Crypto.generateKey = originalGenerateKey;
+      if (Crypto.exportKey === wrappedExportKey) Crypto.exportKey = originalExportKey;
+      if (Crypto.decrypt === wrappedDecrypt) Crypto.decrypt = originalDecrypt;
+      restoreRa2CryptoDiagnostics = () => {};
+    };
+    api.log(`noVNC RA2ne client-key diagnostics armed: connection=${ra2ConnectionId}`);
+  };
   const clipboardText = (value) => {
     const text = String(value || '');
     return new TextEncoder().encode(text).byteLength <= maxClipboardBytes ? text : null;
@@ -114,42 +356,6 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       remotePasteTimer = null;
     }
   };
-  clipboardPaste.addEventListener('paste', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!clipboardSyncEnabled || !connected || !rfb) return;
-    const text = clipboardText(event.clipboardData?.getData('text/plain') || '');
-    if (text === null) {
-      api.log('noVNC clipboard local-to-remote skipped text over 1048576 bytes');
-      return;
-    }
-    if (!text) {
-      api.log('noVNC clipboard paste event contained no plain text');
-      return;
-    }
-    rfb.clipboardPasteFrom(text);
-    clipboardPaste.value = text;
-    const transport = clipboardTransport();
-    if (forceRfb33) {
-      // Vine serves a macOS desktop. ClientCutText updates its clipboard, then
-      // Command+V performs the actual paste in the focused remote application.
-      // Give Vine time to publish ClientCutText to the macOS pasteboard first.
-      if (remotePasteTimer !== null) window.clearTimeout(remotePasteTimer);
-      status.textContent = 'Local clipboard sent to Vine Server; waiting for the remote pasteboard…';
-      remotePasteTimer = window.setTimeout(() => {
-        remotePasteTimer = null;
-        if (!clipboardSyncEnabled || !connected || !rfb) return;
-        rfb.focus();
-        sendSuperChord('v');
-        status.textContent = 'Local clipboard sent to Vine Server and remote Command+V issued.';
-      }, 400);
-    } else {
-      status.textContent = transport.mode === 'legacy'
-        ? 'Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and use the remote platform paste shortcut; server-side clipboard support may be required.'
-        : 'Local clipboard sent to VNC. Click the desktop and use the remote platform paste shortcut.';
-    }
-    api.log(`noVNC clipboard local-to-remote announced bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(',') || 'none'} actions=${transport.actions.join(',') || 'none'}`);
-  });
   const isClipboardPasteEvent = (event) => (
     event.target === clipboardPaste ||
     document.activeElement === clipboardPaste ||
@@ -176,6 +382,51 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     );
     return { mode: formats.length && actions.length ? 'extended' : 'legacy', formats, actions };
   };
+  const sendLocalClipboard = (value, source) => {
+    if (!clipboardSyncEnabled || !connected || !rfb) {
+      status.textContent = 'Clipboard send is unavailable until the VNC connection is ready.';
+      return false;
+    }
+    const text = clipboardText(value);
+    if (text === null) {
+      api.log('noVNC clipboard local-to-remote skipped text over 1048576 bytes');
+      status.textContent = 'Clipboard text is over 1 MiB and was not sent.';
+      return false;
+    }
+    if (!text) {
+      api.log('noVNC clipboard paste event contained no plain text');
+      status.textContent = 'Clipboard contains no plain text.';
+      return false;
+    }
+    rfb.clipboardPasteFrom(text);
+    clipboardPaste.value = text;
+    const transport = clipboardTransport();
+    if (forceRfb33) {
+      // Vine serves a macOS desktop. ClientCutText updates its clipboard, then
+      // Command+V performs the actual paste in the focused remote application.
+      // Give Vine time to publish ClientCutText to the macOS pasteboard first.
+      if (remotePasteTimer !== null) window.clearTimeout(remotePasteTimer);
+      status.textContent = 'Local clipboard sent to Vine Server; waiting for the remote pasteboard…';
+      remotePasteTimer = window.setTimeout(() => {
+        remotePasteTimer = null;
+        if (!clipboardSyncEnabled || !connected || !rfb) return;
+        rfb.focus();
+        sendSuperChord('v');
+        status.textContent = 'Local clipboard sent to Vine Server and remote Command+V issued.';
+      }, 400);
+    } else {
+      status.textContent = transport.mode === 'legacy'
+        ? 'Legacy clipboard sent, but this server advertised no clipboard capability. Click the desktop and use the remote platform paste shortcut; server-side clipboard support may be required.'
+        : 'Local clipboard sent to VNC. Click the desktop and use the remote platform paste shortcut.';
+    }
+    api.log(`noVNC clipboard local-to-remote announced source=${source} bytes=${new TextEncoder().encode(text).byteLength} mode=${transport.mode} formats=${transport.formats.join(',') || 'none'} actions=${transport.actions.join(',') || 'none'}`);
+    return true;
+  };
+  clipboardPaste.addEventListener('paste', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    sendLocalClipboard(event.clipboardData?.getData('text/plain') || '', 'paste-event');
+  });
   const normalizePointerCoordinates = () => {
     const remote = display();
     const canvas = rfb?._canvas;
@@ -186,7 +437,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     remote.absX = (x) => {
       const bounds = canvas.getBoundingClientRect();
       const width = Math.max(1, bounds.width);
-      const pointerOffsetX = 16;
+      // Vine/macOS uses an 8px text-cell alignment in the verified desktop.
+      // Keep one cell of calibration here: no offset starts a drag one cell
+      // too far left, while the former +16px correction skipped two cells.
+      const pointerOffsetX = 8;
       return Math.max(0, Math.min(remote.width - 1, Math.floor((x / width) * canvas.width + remote._viewportLoc.x + pointerOffsetX)));
     };
     remote.absY = (y) => {
@@ -203,6 +457,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     if (!remote?.width || !remote?.height) return 1;
     return Math.min(screen.clientWidth / remote.width, screen.clientHeight / remote.height);
   };
+  const currentZoom = () => (
+    !manualZoomActive && rfb?.scaleViewport ? fittedScale() : zoom
+  );
   const drawNavigator = () => {
     const remote = display();
     const position = viewport();
@@ -225,23 +482,58 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       Math.min(drawHeight, (position.h / remote.height) * drawHeight),
     );
   };
+  const applyManualViewport = () => {
+    const remote = display();
+    if (!remote || zoom <= 0) return null;
+    // Use noVNC's actual host when available. Its inner screen can differ by
+    // a few pixels from the overlay while scrollbars/layout are settling.
+    const host = rfb?._screen || screen;
+    const width = Math.max(1, Math.floor(host.clientWidth / zoom));
+    const height = Math.max(1, Math.floor(host.clientHeight / zoom));
+    remote.scale = zoom;
+    remote.viewportChangeSize(width, height);
+    // viewportChangeSize may rescale its canvas. Set this once more so this
+    // pass cannot leave a manual viewport at noVNC's native 100% scale.
+    remote.scale = zoom;
+    return remote;
+  };
+  const restoreManualViewportSoon = () => {
+    if (!manualZoomActive || manualZoomRestoreQueued) return;
+    manualZoomRestoreQueued = true;
+    window.requestAnimationFrame(() => {
+      manualZoomRestoreQueued = false;
+      if (!manualZoomActive || !rfb) return;
+      if (applyManualViewport()) drawNavigator();
+    });
+  };
+  const installManualZoomGuard = () => {
+    if (!rfb || rfb._fpasotermManualZoomGuard || typeof rfb._updateScale !== 'function') return;
+    const updateScale = rfb._updateScale;
+    rfb._updateScale = function updateScaleWithManualZoom(...args) {
+      const result = updateScale.apply(this, args);
+      // noVNC calls _updateScale during ResizeObserver layout passes and
+      // forces Display.scale back to 1 when scaleViewport is false. Schedule
+      // our restoration after that pass without changing noVNC's Fit mode.
+      restoreManualViewportSoon();
+      return result;
+    };
+    rfb._fpasotermManualZoomGuard = true;
+  };
   const enablePan = (preserveFitScale = false) => {
     if (!rfb) return null;
-    const remote = display();
     // Preserve Fit's current visual scale before disabling automatic scaling.
-    // Previously this reset to 100%, which made simply enabling Pan look like
-    // an unexpected zoom-in.
-    if (preserveFitScale && rfb.scaleViewport) zoom = fittedScale();
-    rfb.scaleViewport = false;
-    rfb.clipViewport = true;
-    // A clipped noVNC viewport is an internal framebuffer region, not a DOM
-    // scroll container. Resize that region for the desired visual zoom.
-    if (remote && zoom > 0) {
-      remote.scale = zoom;
-      remote.viewportChangeSize(screen.clientWidth / zoom, screen.clientHeight / zoom);
-    }
+    // This makes first pan retain the visible Fit size, while every later pan
+    // retains the explicit Zoom −/Zoom + value.
+    if (preserveFitScale && !manualZoomActive && rfb.scaleViewport) zoom = fittedScale();
+    manualZoomActive = true;
+    if (rfb.scaleViewport) rfb.scaleViewport = false;
+    if (!rfb.clipViewport) rfb.clipViewport = true;
+    const remote = applyManualViewport();
+    // The immediate application makes controls responsive; the queued pass
+    // covers a ResizeObserver update noVNC performs after a toolbar click.
+    restoreManualViewportSoon();
     drawNavigator();
-    return display();
+    return remote;
   };
   const panBy = (left, top) => {
     const remote = enablePan(true);
@@ -250,7 +542,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     drawNavigator();
     const position = viewport();
     api.log(`noVNC pan: x=${position.x}, y=${position.y}, viewport=${position.w}x${position.h}, framebuffer=${remote.width}x${remote.height}`);
-    status.textContent = 'Panning at 100%. Enable Pan to drag with the mouse.';
+    status.textContent = `Panning at ${Math.round(zoom * 100)}%.`;
   };
   const toggleModifier = (button, name, keysym, code) => {
     if (!rfb) return;
@@ -431,8 +723,12 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     const escapeButton = escapeKey;
     const tabButton = document.createElement('button');
     const closeButton = document.createElement('button');
+    title.textContent = 'VNC Shortcuts (drag):';
     control.textContent = 'Ctrl'; alt.textContent = 'Alt'; shift.textContent = 'Shift'; superKey.textContent = 'Super';
-    escapeButton.textContent = 'Esc'; tabButton.textContent = 'Tab'; closeButton.textContent = 'Close';
+    ctrlSpace.textContent = 'Ctrl+Space';
+    escapeButton.textContent = 'Esc'; tabButton.textContent = 'Tab'; closeButton.textContent = '×';
+    closeButton.title = 'Close VNC Shortcuts';
+    closeButton.setAttribute('aria-label', 'Close VNC Shortcuts');
     shield.style.cssText = 'position:absolute;inset:0;z-index:2147483647;pointer-events:auto;background:transparent';
     palette.style.cssText = `position:absolute;left:${Math.max(8, Math.min(screen.clientWidth - 500, lastPointer.x))}px;top:${Math.max(8, Math.min(screen.clientHeight - 42, lastPointer.y))}px;display:flex;align-items:center;gap:6px;padding:7px;border:1px solid #9ac7ee;border-radius:5px;background:#17212b;color:#edf5fc;font:13px ui-monospace,monospace`;
     // A noVNC canvas must never receive pointer events aimed at the shortcut
@@ -440,7 +736,8 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     palette.style.pointerEvents = 'auto';
     palette.tabIndex = 0;
     palette.setAttribute('aria-label', 'VNC shortcuts: choose modifiers, then press an alphanumeric key to send the chord');
-    for (const button of [...keyButtons, escapeButton, tabButton, closeButton]) {
+    title.style.cssText = 'cursor:grab;user-select:none;touch-action:none';
+    for (const button of [...keyButtons, ctrlSpace, escapeButton, tabButton, closeButton]) {
       button.type = 'button';
       button.style.cssText = 'padding:5px 7px;border:1px solid #59738c;border-radius:4px;background:#263b4e;color:#edf5fc';
     }
@@ -448,6 +745,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     alt.onclick = () => toggleModifier(alt, 'Alt', Keysyms.XK_Alt_L, 'AltLeft');
     shift.onclick = () => toggleModifier(shift, 'Shift', Keysyms.XK_Shift_L, 'ShiftLeft');
     superKey.onclick = () => toggleModifier(superKey, 'Super', remoteSuperKeysym, remoteSuperCode);
+    ctrlSpace.onclick = () => {
+      sendMacInputSourceShortcut();
+      dismissPrefixPalette();
+    };
     escapeButton.onclick = () => {
       sendChord([], '', 'Escape', Keysyms.XK_Escape);
       api.log('noVNC palette key sent: Escape');
@@ -459,6 +760,43 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       dismissPrefixPalette();
     };
     closeButton.onclick = dismissPrefixPalette;
+    let paletteDrag = null;
+    const stopPaletteDrag = (event) => {
+      if (!paletteDrag || paletteDrag.pointerId !== event.pointerId) return;
+      title.releasePointerCapture?.(event.pointerId);
+      paletteDrag = null;
+      title.style.cursor = 'grab';
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    title.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      const paletteBounds = palette.getBoundingClientRect();
+      paletteDrag = {
+        pointerId: event.pointerId,
+        offsetX: event.clientX - paletteBounds.left,
+        offsetY: event.clientY - paletteBounds.top,
+      };
+      title.setPointerCapture?.(event.pointerId);
+      title.style.cursor = 'grabbing';
+      palette.focus({ preventScroll: true });
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    title.addEventListener('pointermove', (event) => {
+      if (!paletteDrag || paletteDrag.pointerId !== event.pointerId) return;
+      const screenBounds = screen.getBoundingClientRect();
+      const left = event.clientX - screenBounds.left - paletteDrag.offsetX;
+      const top = event.clientY - screenBounds.top - paletteDrag.offsetY;
+      const maxLeft = Math.max(8, screen.clientWidth - palette.offsetWidth - 8);
+      const maxTop = Math.max(8, screen.clientHeight - palette.offsetHeight - 8);
+      palette.style.left = `${Math.max(8, Math.min(maxLeft, left))}px`;
+      palette.style.top = `${Math.max(8, Math.min(maxTop, top))}px`;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    title.addEventListener('pointerup', stopPaletteDrag);
+    title.addEventListener('pointercancel', stopPaletteDrag);
     for (const eventName of ['pointerdown', 'pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'click']) {
       // Bubble phase preserves the button's own click handler, then prevents
       // the event from reaching the RFB host below the palette.
@@ -479,7 +817,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       api.log(`noVNC palette shortcut sent: ${[...heldModifiers.keys(), character].join('+')}`);
       releaseModifiers(); dismissPrefixPalette();
     });
-    palette.append(title, ...keyButtons, escapeButton, tabButton, closeButton);
+    palette.append(title, ...keyButtons, ctrlSpace, escapeButton, tabButton, closeButton);
     shield.append(palette); screen.append(shield);
     prefixShield = shield; prefixPalette = palette;
     palette.focus();
@@ -502,20 +840,29 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     drawNavigator();
     status.textContent = `Manual zoom: ${Math.round(zoom * 100)}%`;
   };
-  zoomOut.addEventListener('click', () => { zoom = Math.max(0.1, zoom - 0.1); applyZoom(); });
-  zoomIn.addEventListener('click', () => { zoom = Math.min(2.5, zoom + 0.1); applyZoom(); });
+  zoomOut.addEventListener('click', () => { zoom = Math.max(0.1, currentZoom() - 0.1); applyZoom(); });
+  zoomIn.addEventListener('click', () => { zoom = Math.min(2.5, currentZoom() + 0.1); applyZoom(); });
   metaNext.addEventListener('click', () => {
     setMetaNextArmed(!metaNextArmed);
     rfb?.focus();
   });
-  ctrlSpace.addEventListener('click', sendMacInputSourceShortcut);
+  shortcuts.addEventListener('click', () => {
+    if (!connected || !rfb) {
+      status.textContent = 'VNC Shortcuts are unavailable until the VNC connection is ready.';
+      return;
+    }
+    dismissPrefixPalette();
+    showPrefixPalette();
+    status.textContent = 'VNC Shortcuts opened.';
+  });
   resetKeys.addEventListener('click', resetRemoteKeys);
   fit.addEventListener('click', () => {
     if (rfb) {
+      manualZoomActive = false;
       rfb.clipViewport = false;
       rfb.scaleViewport = true;
       requestAnimationFrame(() => {
-        zoom = fittedScale();
+        if (!manualZoomActive) zoom = fittedScale();
       });
     }
     navigator.style.display = 'none';
@@ -530,8 +877,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
   panUp.addEventListener('click', () => panBy(0, -screen.clientHeight * 0.1));
   panDown.addEventListener('click', () => panBy(0, screen.clientHeight * 0.1));
   navigator.addEventListener('click', (event) => {
-    if (zoom < 1.5) { zoom = 1.5; applyZoom(); }
-    const remote = enablePan();
+    if (!manualZoomActive && rfb?.scaleViewport) zoom = fittedScale();
+    if (zoom < 1.5) zoom = 1.5;
+    const remote = enablePan(false);
     const position = viewport();
     if (!remote || !position) return;
     const box = navigator.getBoundingClientRect();
@@ -574,6 +922,12 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     // is deliberately not VNC's standard 5900; install with
     // --plugin-tcp-target tcp://host:5900 (or tls://host:5900) to connect.
     const bridgeUrl = await api.openVncBridge({ target: 'tcp://127.0.0.1:53390' });
+    try {
+      ra2BridgeTraceId = new URL(bridgeUrl).searchParams.get('trace') || 'missing';
+    } catch {
+      ra2BridgeTraceId = 'invalid-url';
+    }
+    api.log(`noVNC RA2ne trace: connection=${ra2ConnectionId} bridge=${ra2BridgeTraceId}`);
     status.textContent = 'Connecting to the configured verification target through the local bridge…';
     const username = await api.promptText({
       title: 'VNC username',
@@ -588,6 +942,26 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
     });
     if (password === null) { status.textContent = 'VNC password entry cancelled.'; return; }
     rfb = new RFB(screen, bridgeUrl, { credentials: { username, password } });
+    installVncBridgeCloseDiagnostics();
+    installRa2WebsockReceiveDiagnostics();
+    installRa2WireDiagnostics();
+    installRa2CryptoDiagnostics();
+    // noVNC reports several RA2ne errors only through its internal `_fail`
+    // path, then emits a generic disconnect event. Preserve the actual reason
+    // for this connection in both the status line and Plugin Activity.
+    if (typeof rfb._fail === 'function') {
+      const originalFail = rfb._fail.bind(rfb);
+      rfb._fail = (details) => {
+        const detail = String(details || 'unknown VNC protocol failure').trim().slice(0, 240);
+        const rfbVersion = Number.isFinite(Number(rfb._rfbVersion)) ? rfb._rfbVersion : 'unknown';
+        const securityType = Number.isFinite(Number(rfb._rfbAuthScheme)) ? rfb._rfbAuthScheme : 'unknown';
+        const handshakeStage = String(rfb._rfbInitState || 'unknown');
+        connectionFailure = `VNC protocol failure: ${detail}`;
+        status.textContent = connectionFailure;
+        api.log(`noVNC protocol failure: ${detail}; rfb=${rfbVersion}; security=${securityType}; stage=${handshakeStage}; ra2Connection=${ra2ConnectionId}; ra2State=${ra2StateId}; ra2Phase=${ra2Phase}`);
+        return originalFail(details);
+      };
+    }
     if (forceRfb33) {
       // noVNC has no public maximum-version option.  Set its internal maximum
       // before the asynchronously delivered server banner is negotiated.
@@ -599,7 +973,11 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         RFB.messages.clientEncodings(this._sock, [5, 0]);
       };
       api.log('noVNC compatibility: forcing RFB 3.3 with Hextile/Raw for Vine Server');
+    } else {
+      api.log('noVNC transport: automatic RFB negotiation (maximum 3.8)');
     }
+    installManualZoomGuard();
+    manualZoomActive = false;
     rfb.scaleViewport = true;
     rfb.resizeSession = false;
     reportFramebuffer('RFB created');
@@ -724,11 +1102,10 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         }
         if (/^Key[A-Z]$/.test(keyEvent.code)) {
           handledHostKeyEvents.add(keyEvent);
-          if (forceRfb33 && !keyEvent.shiftKey && (keyEvent.code === 'KeyC' || keyEvent.code === 'KeyV')) {
-            sendSuperChord(keyEvent.key);
-          } else {
-            sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
-          }
+          // Ctrl+C must remain a remote terminal interrupt. Translating it
+          // into a macOS Command/Option shortcut produces characters such as
+          // "Ã§" on Vine rather than delivering Control+C.
+          sendCtrlChord(keyEvent.key, keyEvent.shiftKey);
           return true;
         }
         return false;
@@ -810,11 +1187,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         if (keyEvent.type !== 'keydown' || !keyEvent.ctrlKey || keyEvent.shiftKey || !/^Key[A-Z]$/.test(keyEvent.code)) return;
         keyEvent.preventDefault(); keyEvent.stopImmediatePropagation();
         capturedControlKeys.add(keyEvent.code);
-        if (forceRfb33 && (keyEvent.code === 'KeyC' || keyEvent.code === 'KeyV')) {
-          sendSuperChord(keyEvent.key);
-        } else {
-          sendCtrlChord(keyEvent.key);
-        }
+        sendCtrlChord(keyEvent.key);
       };
       // The host capture on document owns the regular Ctrl+Shift path. Keep a
       // fallback only on document/canvas for WebViews that bypass it, but do
@@ -854,6 +1227,7 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
         }
       };
       requestAnimationFrame(() => {
+        manualZoomActive = false;
         rfb.scaleViewport = true;
         zoom = fittedScale();
         normalizePointerCoordinates();
@@ -886,16 +1260,117 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       }
     });
     rfb.addEventListener('disconnect', (event) => {
+      restoreVncBridgeCloseDiagnostics();
+      restoreRa2WebsockReceiveDiagnostics();
+      restoreRa2CryptoDiagnostics();
       stopClipboardSync();
       removePrefixListener(); releaseHostKeyCapture(); releaseRemotePointerCapture(); dismissPrefixPalette();
       for (const modifier of heldModifiers.values()) setToggleAppearance(modifier.button, false);
       heldModifiers.clear();
-      status.textContent = event.detail?.clean ? 'Disconnected.' : 'Connection closed unexpectedly. Check Plugin Activity.';
-      api.log(`noVNC disconnected: clean=${Boolean(event.detail?.clean)}`);
+      const clean = Boolean(event.detail?.clean);
+      status.textContent = connectionFailure || (clean
+        ? 'Disconnected.'
+        : 'Connection closed unexpectedly. Check Plugin Activity.');
+      api.log(`noVNC disconnected: clean=${clean}${connectionFailure ? ` failure=${connectionFailure}` : ''}`);
     });
     rfb.addEventListener('securityfailure', (event) => {
-      api.log(`noVNC security failure: ${JSON.stringify(event.detail || {})}`);
-      status.textContent = 'VNC security negotiation failed. Check Plugin Activity.';
+      const detail = event.detail || {};
+      const reason = typeof detail.reason === 'string' && detail.reason.trim()
+        ? detail.reason.trim().slice(0, 240)
+        : '';
+      const securityStatus = Number.isFinite(Number(detail.status)) ? ` (status ${detail.status})` : '';
+      connectionFailure = `VNC security negotiation failed${securityStatus}${reason ? `: ${reason}` : '.'}`;
+      api.log(`noVNC security failure: ${JSON.stringify(detail)}`);
+      status.textContent = connectionFailure;
+    });
+    rfb.addEventListener('serververification', async (event) => {
+      if (connected || serverVerificationInProgress) {
+        api.log('noVNC ignored an unexpected duplicate server-key verification request');
+        return;
+      }
+      serverVerificationInProgress = true;
+      const verificationState = rememberRa2State();
+      if (!verificationState) {
+        connectionFailure = 'VNC server key verification lost its RA2ne state.';
+        status.textContent = connectionFailure;
+        api.log(`noVNC RA2ne state missing at server-key verification: connection=${ra2ConnectionId}`);
+        rfb.disconnect();
+        serverVerificationInProgress = false;
+        return;
+      }
+      ra2Phase = 'await-server-key-approval';
+      const detail = event.detail || {};
+      const publickey = detail.publickey instanceof Uint8Array
+        ? detail.publickey
+        : new Uint8Array(detail.publickey || []);
+      let fingerprint = 'unavailable';
+      try {
+        const digest = await crypto.subtle.digest('SHA-256', publickey);
+        fingerprint = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join(':');
+      } catch (error) {
+        api.log(`noVNC server-key fingerprint calculation failed: ${error}`);
+      }
+      const keyType = String(detail.type || 'unknown');
+      api.log(`noVNC server-key verification requested type=${keyType} bytes=${publickey.byteLength} sha256=${fingerprint}; connection=${ra2ConnectionId}; state=${ra2StateId}`);
+      status.textContent = 'VNC server key verification required.';
+      let approved = false;
+      try {
+        if (typeof api.promptConfirm !== 'function') {
+          // Keep older fpasoterm installs usable while making the required
+          // host update visible. Their text field is ignored; any approval
+          // button click accepts this connection-scoped server key.
+          api.log('noVNC server-key verification: host lacks promptConfirm; using legacy confirmation prompt');
+          const legacyApproval = await api.promptText({
+            title: 'Verify VNC server key',
+            message: `Security type: ${keyType}\nSHA-256: ${fingerprint}\n\nCompare this fingerprint with a trusted server administrator when possible. Select Trust and continue to approve this server key for this connection only. The text field is ignored.`,
+            approve: 'Trust and continue',
+          });
+          approved = legacyApproval !== null;
+        } else {
+          approved = await api.promptConfirm({
+            title: 'Verify VNC server key',
+            message: `Security type: ${keyType}\nSHA-256: ${fingerprint}\n\nCompare this fingerprint with a trusted server administrator when possible. Select Trust and continue to approve this server key for this connection only.`,
+            approve: 'Trust and continue',
+            cancel: 'Reject',
+          });
+        }
+      } catch (error) {
+        connectionFailure = 'VNC server key confirmation could not be displayed.';
+        status.textContent = connectionFailure;
+        api.log(`noVNC server-key verification prompt failed: ${error}`);
+        rfb.disconnect();
+        return;
+      } finally {
+        serverVerificationInProgress = false;
+      }
+      if (!approved) {
+        connectionFailure = 'VNC server key was not approved; connection cancelled.';
+        status.textContent = connectionFailure;
+        api.log('noVNC server-key verification rejected by user');
+        rfb.disconnect();
+        return;
+      }
+      if (typeof rfb.approveServer !== 'function') {
+        connectionFailure = 'This noVNC build cannot approve the requested server key.';
+        status.textContent = connectionFailure;
+        api.log('noVNC server-key verification failed: approveServer is unavailable');
+        rfb.disconnect();
+        return;
+      }
+      const approvalState = rfb._rfbRSAAESAuthenticationState || null;
+      const stateMatches = approvalState === verificationState;
+      api.log(`noVNC RA2ne server-key approval state: connection=${ra2ConnectionId} state=${ra2StateId} matchesVerification=${stateMatches}`);
+      if (!stateMatches) {
+        connectionFailure = 'VNC server key verification state changed before approval.';
+        status.textContent = connectionFailure;
+        api.log(`noVNC RA2ne state mismatch before server-key approval: connection=${ra2ConnectionId} expected=${ra2StateId}`);
+        rfb.disconnect();
+        return;
+      }
+      ra2Phase = 'await-client-public-key';
+      rfb.approveServer();
+      status.textContent = 'VNC server key approved; continuing authentication…';
+      api.log(`noVNC server-key approved for this connection; connection=${ra2ConnectionId}; state=${ra2StateId}`);
     });
     rfb.addEventListener('credentialsrequired', async (event) => {
       if (connected) {
@@ -921,6 +1396,9 @@ api.registerCommand('novnc-local-bridge', 'Open noVNC local bridge (test)', asyn
       if (!connected) rfb.sendCredentials(credentials);
     });
   } catch (error) {
+    restoreVncBridgeCloseDiagnostics();
+    restoreRa2WebsockReceiveDiagnostics();
+    restoreRa2CryptoDiagnostics();
     status.textContent = `Could not start noVNC: ${String(error)}`;
     api.log(`integration/novnc-local-bridge failed: ${String(error)}`);
   }

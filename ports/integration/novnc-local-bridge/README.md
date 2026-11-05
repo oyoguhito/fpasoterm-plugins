@@ -9,7 +9,7 @@ sets one.
 
 ## Install and optional port-author rebuild
 
-For fpasoterm 1.6.16 or later, install the exact target directly from this
+For fpasoterm 1.6.17 or later, install the exact target directly from this
 checkout. This writes the same reviewed target into both the plugin program and
 its native bridge permission; rebuilding a private `plugin.js` is unnecessary:
 
@@ -32,22 +32,45 @@ npm ci
 npm run port:integration:novnc-local-bridge:configure -- tcp://host:port
 ```
 
-Some Vine Server releases advertise RFB 3.8 but do not return the 3.8
-security-type list. This release uses RFB 3.3 compatibility mode by default
-for the verified Vine workflow. If a different server negotiates normally and
-needs modern RFB negotiation, rebuild a private target without the
-compatibility option:
+This port uses automatic modern RFB negotiation (up to RFB 3.8) by default.
+Some historical Vine Server releases advertise RFB 3.8 but do not return the
+3.8 security-type list. Only for such a server, rebuild a private target with
+the explicit RFB 3.3 compatibility option:
 
 ```bash
 npm run port:integration:novnc-local-bridge:configure -- \
-  tcp://host:port
+  tcp://host:port --rfb-3.3
 ```
 
 RFB 3.3 has a different, older security negotiation and cannot use later
-authentication types. The compatibility mode also limits framebuffer encodings
-to Hextile and Raw because affected Vine releases can stall on noVNC's complete
-modern encoding and pseudo-encoding list. `reset` restores loopback and turns
-the compatibility mode off.
+authentication types. The opt-in compatibility mode also limits framebuffer
+encodings to Hextile and Raw because affected Vine releases can stall on
+noVNC's complete modern encoding and pseudo-encoding list. `reset` restores
+the inert loopback target and automatic RFB negotiation.
+
+## RA2ne server-key verification
+
+Some servers, including kVNC configurations that negotiate `RA2ne`, pause
+before password authentication while waiting for the client to verify the
+server's RSA key. The plugin shows the key type and a SHA-256 fingerprint. It
+does not continue automatically: compare the fingerprint with a trusted server
+administrator when possible, then select **Trust and continue**. There is no
+text to type. Reject/Cancel declines the key and disconnects. The public
+key/fingerprint is not stored;
+any credentials already entered in the connection prompt remain only in memory
+and RA2ne does not send them until after approval.
+
+fpasoterm 1.6.17 forwards RA2ne's server ciphertext length and its 256-byte
+ciphertext as one WebSocket binary message. This preserves the RFB byte stream
+while avoiding noVNC 1.5.0 reading the ciphertext before a separately-framed
+payload arrives. If an approved key still reports `RA2: corrupted server
+encrypted random`, the failure is before password submission. Plugin Activity
+records only the negotiated protocol state and SHA-256 fingerprints, not keys,
+passwords, random values, clipboard contents, or tokens. Verify that it says
+`automatic RFB negotiation (maximum 3.8)` for non-Vine servers, then use the
+joint procedure in
+[`docs/kvnc-ra2ne-novnc-report.md`](../../../docs/kvnc-ra2ne-novnc-report.md).
+Do not disable encryption or key verification as a workaround.
 
 The safe default is `tcp://127.0.0.1:53390`; it intentionally does not use a
 VNC display. Select a trusted endpoint explicitly, normally
@@ -70,15 +93,51 @@ The plugin requests username first (leave blank for password-only servers),
 then password, before starting noVNC. The panel also provides **Zoom −**,
 **Zoom +**, and **Fit** controls; Fit is the default automatic sizing mode.
 
+## Viewport controls
+
+**Zoom −** and **Zoom +** enter manual zoom mode. The **←**, **↑**, **↓** and
+**→** toolbar buttons pan the visible part of the remote desktop by a small
+step while retaining that exact manual percentage, including at the right and
+bottom edges. **Fit** returns to automatic sizing. **Overview** shows a
+clickable complete-desktop map; selecting a point also enters manual zoom so
+the selected viewport remains visible.
+
+Physical arrow keys are not viewport controls: they are sent to the remote
+desktop for menu and application navigation. This distinction keeps remote
+keyboard behavior intact while the toolbar controls local panning.
+
+**Command / Windows** is a one-shot remote modifier: select it and then type
+one alphanumeric key to send the platform-appropriate Command/Windows shortcut
+to the remote desktop. It is independent from input-source switching. The
+legacy **かな**, **英数**, **macOS previous input source**, and **macOS next
+input source** controls are intentionally not present: server-side mappings
+for those named sources are not portable. Use **Ctrl+Space** as the single
+best-effort input-source shortcut instead.
+
+## VNC Shortcuts
+
+Physical **Ctrl+C** and **Ctrl+V** are always sent as remote Control shortcuts.
+In particular, Ctrl+C remains a terminal interrupt and is not translated into a
+macOS Command or Option character. For remote macOS Command shortcuts, select
+**Command / Windows** and press the next alphanumeric key.
+
+Use the toolbar **Shortcuts** button (or **Ctrl+Shift+Space**) to open **VNC
+Shortcuts**. Select Ctrl, Alt, Shift, or Super, then type one alphanumeric key
+to send that remote chord. The palette also provides **Ctrl+Space**, Esc, Tab,
+and **×** to close it. It blocks
+remote mouse events while it is open, so selecting its controls does not click
+the remote desktop. Drag the **VNC Shortcuts (drag):** heading to move the
+palette without sending remote pointer events.
+
 ## Japanese IME keys
 
-The toolbar has **Ctrl+Space** and **Reset keys** controls. **Ctrl+Space** sends
-a complete remote `Control+Space` chord. On macOS this can select another input
-source when that standard shortcut is enabled; Windows and Linux remote systems
-may bind it differently. It does not claim to select a particular source, and
-it does not change Vine's Keyboard Layout or the local computer's input source.
-It is a best-effort shortcut, not a way for the plugin to query or restore a
-named macOS input source.
+The **VNC Shortcuts** palette has **Ctrl+Space**, which sends a complete remote
+`Control+Space` chord. On macOS this can select another input source when that
+standard shortcut is enabled; Windows and Linux remote systems may bind it
+differently. It does not claim to select a particular source, and it does not
+change Vine's Keyboard Layout or the local computer's input source. It is a
+best-effort shortcut, not a way for the plugin to query or restore a named
+macOS input source.
 
 **Reset keys** explicitly releases remote Ctrl, Shift, Alt, and
 Command/Windows keys, and resets noVNC's tracked keys. Use it if normal letters
@@ -108,8 +167,9 @@ detect or restore Unicode Hex Input. The plugin sends ordinary RFB keys and
 does not remap normal letters or emulate Fn, so its Ctrl/Command and clipboard
 behavior remains intact.
 
-If input-source switching is required, use **Ctrl+Space** and confirm that the
-remote Mac has the needed sources and that **System Settings > Keyboard >
+If input-source switching is required, open **Shortcuts**, select
+**Ctrl+Space**, and confirm that the remote Mac has the needed sources and that
+**System Settings > Keyboard >
 Keyboard Shortcuts > Input Sources** has not replaced that shortcut. The plugin
 sends a complete press/release pair and resets any preceding remote modifiers
 first; it does not invoke local browser shortcuts.
@@ -118,18 +178,18 @@ first; it does not invoke local browser shortcuts.
 
 Plain-text clipboard sharing is active only while that VNC connection is open.
 Remote-to-local changes are written to fpasoterm's shared WebView/OS clipboard.
-For local-to-remote transfer, focus the multi-line **Local → VNC** text area and
-press Ctrl+V, then focus the VNC desktop and press Ctrl+V there. This explicit
-paste flow avoids WebView clipboard-read restrictions and does not poll the
-clipboard, so synchronization cannot starve VNC rendering or input. Clipboard
-content is never logged or persisted; empty text, HTML/files/binary formats,
-and text over 1 MiB are ignored.
+For local-to-remote transfer, focus the multi-line **Local → VNC** text area
+and press Ctrl+V. This explicit paste flow transfers the text selected by the
+host clipboard event, avoids stale WebView clipboard reads, and never polls or
+persists its contents. Clipboard content is never logged or persisted; empty
+text, HTML/files/binary formats, and text over 1 MiB are ignored.
 
 In Vine Server compatibility mode the remote desktop is macOS: after text is
 pasted into **Local → VNC**, the plugin sends it with legacy ClientCutText and
-issues remote Command+V automatically. Physical Ctrl+C and Ctrl+V over the VNC
-desktop are likewise translated to remote Command+C and Command+V. Other VNC
-servers retain their native key handling.
+issues remote Command+V automatically. Physical Ctrl+C and Ctrl+V remain
+remote Control shortcuts; use **Command / Windows** followed by `c` or `v`
+when a remote macOS application needs a Command shortcut. Other VNC servers
+retain their native key handling.
 
 Clipboard transfer also requires support from the VNC server. If Plugin
 Activity reports `mode=legacy formats=none actions=none`, noVNC sent the
