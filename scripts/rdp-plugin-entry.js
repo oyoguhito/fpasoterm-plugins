@@ -79,6 +79,24 @@ function applyInput(session, event) {
   session.applyInputs(transaction);
 }
 
+// Keep a shortcut's modifier press, key press/release, and modifier release
+// together.  Sending the modifier from a toolbar click and the target key
+// from a later DOM event creates separate RDP input transactions; some RDP
+// peers do not observe those transactions as one keyboard chord.
+function applyInputSequence(session, events) {
+  const transaction = new InputTransaction();
+  for (const event of events) transaction.addEvent(event);
+  session.applyInputs(transaction);
+}
+
+const REMOTE_MODIFIER_CODES = new Set(['ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'ShiftLeft', 'ShiftRight', 'MetaLeft', 'MetaRight']);
+
+function rdpKeyLabel(code) {
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  return ({ ControlLeft: 'Ctrl', AltLeft: 'Alt', MetaLeft: 'Command / Windows' })[code] || code;
+}
+
 // object-fit: contain can place letterbox space inside the canvas element.
 // Translate browser coordinates from the rendered remote-desktop rectangle,
 // rather than the wider element rectangle, before sending RDP coordinates.
@@ -100,7 +118,7 @@ function rdpPointerCoordinates(canvas, event) {
 function setupRdpInputHandlers(canvas, session, options = {}) {
   let pendingPointerMove = null;
   let pointerFrame = 0;
-  let metaChordCode = null;
+  const consumedChordKeyups = new Set();
   const flushPointerMove = () => {
     pointerFrame = 0;
     const coordinates = pendingPointerMove;
@@ -111,9 +129,25 @@ function setupRdpInputHandlers(canvas, session, options = {}) {
     const clipboardShortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
     event.preventDefault(); event.stopPropagation();
     const scancode = SCANCODE_MAP[event.code];
-    if (scancode !== undefined && options.consumeMetaNext?.()) {
-      applyInput(session, DeviceEvent.keyPressed(SCANCODE_MAP.MetaLeft));
-      metaChordCode = event.code;
+    const remoteModifiers = scancode !== undefined && !REMOTE_MODIFIER_CODES.has(event.code)
+      ? options.consumeRemoteModifiers?.(event.code) || []
+      : [];
+    if (scancode !== undefined && remoteModifiers.length) {
+      applyInputSequence(session, [
+        ...remoteModifiers.map((code) => DeviceEvent.keyPressed(SCANCODE_MAP[code])),
+        DeviceEvent.keyPressed(scancode),
+        DeviceEvent.keyReleased(scancode),
+        ...remoteModifiers.slice().reverse().map((code) => DeviceEvent.keyReleased(SCANCODE_MAP[code])),
+      ]);
+      // The physical keyup still reaches this canvas.  Its matching remote
+      // release was already included above, so consume it instead of sending
+      // a second release in a later transaction.
+      consumedChordKeyups.add(event.code);
+      options.remoteModifierChordSent?.(remoteModifiers, event.code);
+      if ((clipboardShortcut || remoteModifiers.includes('ControlLeft')) && event.code === 'KeyC' && options.clipboardSyncEnabled?.()) {
+        options.remoteCopyStarted?.();
+      }
+      return;
     }
     if (scancode !== undefined) applyInput(session, DeviceEvent.keyPressed(scancode));
     if (clipboardShortcut && event.code === 'KeyC' && options.clipboardSyncEnabled?.()) {
@@ -122,12 +156,9 @@ function setupRdpInputHandlers(canvas, session, options = {}) {
   });
   canvas.addEventListener('keyup', (event) => {
     event.preventDefault(); event.stopPropagation();
+    if (consumedChordKeyups.delete(event.code)) return;
     const scancode = SCANCODE_MAP[event.code];
     if (scancode !== undefined) applyInput(session, DeviceEvent.keyReleased(scancode));
-    if (metaChordCode === event.code) {
-      applyInput(session, DeviceEvent.keyReleased(SCANCODE_MAP.MetaLeft));
-      metaChordCode = null;
-    }
   });
   canvas.addEventListener('mousemove', (event) => {
     const coordinates = rdpPointerCoordinates(canvas, event);
@@ -193,9 +224,10 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
 
   let session = null;
   let releaseRdpKeyCapture = () => {};
+  let clearArmedModifiers = () => {};
   const overlay = api.openElementOverlay({
     title: 'RDP local bridge (prototype)', width: 1280, height: 820,
-    onClose: () => { releaseRdpKeyCapture(); session?.shutdown(); },
+    onClose: () => { releaseRdpKeyCapture(); clearArmedModifiers(); session?.shutdown(); },
   });
   const root = overlay.element;
   root.replaceChildren();
@@ -206,6 +238,16 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   metaNext.type = 'button'; metaNext.textContent = 'Command / Windows';
   metaNext.title = 'Apply the remote Command/Windows modifier to the next key only';
   metaNext.style.cssText = 'padding:5px 8px;border:1px solid #666;border-radius:4px;background:#263b4e;color:#eee';
+  const ctrlModifier = document.createElement('button');
+  const altModifier = document.createElement('button');
+  for (const [button, label, title] of [
+    [ctrlModifier, 'Ctrl', 'Apply remote Ctrl to the next non-modifier key'],
+    [altModifier, 'Alt', 'Apply remote Alt to the next non-modifier key'],
+  ]) {
+    button.type = 'button'; button.textContent = label; button.title = title;
+    button.disabled = true; button.setAttribute('aria-pressed', 'false');
+    button.style.cssText = 'padding:5px 8px;border:1px solid #666;border-radius:4px;background:#263b4e;color:#eee';
+  }
   const canvas = document.createElement('canvas'); canvas.tabIndex = 0; canvas.style.cssText = 'width:100%;flex:1;min-height:0;background:#000;outline:none;object-fit:contain';
   const clipboardPaste = document.createElement('textarea'); clipboardPaste.rows = 3;
   clipboardPaste.placeholder = 'Local → RDP: click here, then press Ctrl+V';
@@ -213,13 +255,43 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   clipboardPaste.spellcheck = false;
   clipboardPaste.style.cssText = 'box-sizing:border-box;width:100%;min-height:4.5em;resize:vertical';
   clipboardPaste.disabled = true;
-  controls.append(status, metaNext);
+  controls.append(status, metaNext, ctrlModifier, altModifier);
   root.append(controls, canvas, clipboardPaste);
   // Let fpasoterm record this remote desktop directly. Overlay-tree discovery
   // is retained as a fallback, but macOS WebViews can transiently reparent a
   // local overlay while an RDP surface is focused.
   canvas.setAttribute('data-fpasoterm-video-capture', 'front');
   let metaNextArmed = false;
+  const clearMetaNext = () => {
+    metaNextArmed = false;
+    metaNext.setAttribute('aria-pressed', 'false');
+    metaNext.style.background = '#263b4e';
+  };
+  const armedModifiers = new Map();
+  const updateModifierButton = (button, armed) => {
+    button.setAttribute('aria-pressed', String(armed));
+    button.style.background = armed ? '#2d7d46' : '#263b4e';
+  };
+  const clearRdpModifiers = () => {
+    for (const button of armedModifiers.values()) {
+      updateModifierButton(button, false);
+    }
+    armedModifiers.clear();
+  };
+  clearArmedModifiers = () => { clearMetaNext(); clearRdpModifiers(); };
+  const toggleRdpModifier = (code, button, label) => {
+    if (!session) return;
+    if (armedModifiers.has(code)) {
+      armedModifiers.delete(code);
+      updateModifierButton(button, false);
+      status.textContent = `Remote ${label} modifier cancelled.`;
+    } else {
+      armedModifiers.set(code, button);
+      updateModifierButton(button, true);
+      status.textContent = `Remote ${label} armed for the next key.`;
+    }
+    canvas.focus();
+  };
   metaNext.addEventListener('click', () => {
     metaNextArmed = !metaNextArmed;
     metaNext.setAttribute('aria-pressed', String(metaNextArmed));
@@ -229,6 +301,8 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
       : 'Command / Windows modifier cancelled.';
     canvas.focus();
   });
+  ctrlModifier.addEventListener('click', () => toggleRdpModifier('ControlLeft', ctrlModifier, 'Ctrl'));
+  altModifier.addEventListener('click', () => toggleRdpModifier('AltLeft', altModifier, 'Alt'));
   let clipboardSyncEnabled = false;
   let lastLocalClipboard = '';
   let lastRemoteClipboard = '';
@@ -312,22 +386,28 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
     session = await builder.connect();
     clipboardSyncEnabled = true;
     clipboardPaste.disabled = false;
+    ctrlModifier.disabled = false;
+    altModifier.disabled = false;
     const desktop = session.desktopSize(); canvas.width = desktop.width; canvas.height = desktop.height;
     setupRdpInputHandlers(canvas, session, {
       clipboardSyncEnabled: () => clipboardSyncEnabled,
       remoteCopyStarted: () => { status.textContent = 'Waiting for the remote clipboard…'; },
-      consumeMetaNext: () => {
-        if (!metaNextArmed) return false;
-        metaNextArmed = false;
-        metaNext.setAttribute('aria-pressed', 'false');
-        metaNext.style.background = '#263b4e';
-        return true;
+      consumeRemoteModifiers: () => {
+        const modifiers = Array.from(armedModifiers.keys());
+        clearRdpModifiers();
+        if (metaNextArmed) {
+          clearMetaNext();
+          modifiers.unshift('MetaLeft');
+        }
+        return modifiers;
+      },
+      remoteModifierChordSent: (modifiers, code) => {
+        status.textContent = `Remote ${[...modifiers.map(rdpKeyLabel), rdpKeyLabel(code)].join('+')} sent.`;
       },
     });
-    // `openElementOverlay` normally interprets Escape as Close. Claim Escape
-    // before that host handler and forward both its press and release to RDP.
-    // The host Close control is the only close action and invokes onClose,
-    // which shuts down the RDP session before removing the overlay.
+    // Keep Escape on the RDP input path even if focus is temporarily inside a
+    // child element. The host overlay reserves no keyboard shortcut for Close;
+    // its explicit Close button is the only action that ends the session.
     releaseRdpKeyCapture = overlay.captureKeys?.((event) => {
       if (event.code !== 'Escape' && event.key !== 'Escape') return false;
       const scancode = SCANCODE_MAP[event.code];
@@ -337,7 +417,12 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
       return true;
     }) || (() => {});
     status.textContent = `Connected: ${desktop.width} × ${desktop.height} — clipboard sync is active.`; canvas.focus();
-    session.run().finally(() => { releaseRdpKeyCapture(); clipboardSyncEnabled = false; clipboardPaste.disabled = true; status.textContent = 'RDP session ended.'; session = null; });
+    session.run().finally(() => {
+      releaseRdpKeyCapture(); clearArmedModifiers();
+      clipboardSyncEnabled = false; clipboardPaste.disabled = true;
+      ctrlModifier.disabled = true; altModifier.disabled = true;
+      status.textContent = 'RDP session ended.'; session = null;
+    });
   } catch (error) {
     const detail = formatRdpError(error);
     status.textContent = `Connection failed: ${detail}`;

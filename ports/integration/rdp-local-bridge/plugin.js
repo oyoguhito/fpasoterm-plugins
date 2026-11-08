@@ -1,4 +1,4 @@
-// @fpasoterm-plugin version: 0.1.2
+// @fpasoterm-plugin version: 0.1.3
 // @fpasoterm-plugin description: Prototype RDP client using the declared local bridge.
 // @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:53389
 // Third-party: ironrdp-wasm 1.1.0 (MIT), https://github.com/electerm/ironrdp-wasm
@@ -2000,6 +2000,17 @@ ${val.stack}`;
     transaction.addEvent(event);
     session.applyInputs(transaction);
   }
+  function applyInputSequence(session, events) {
+    const transaction = new InputTransaction();
+    for (const event of events) transaction.addEvent(event);
+    session.applyInputs(transaction);
+  }
+  var REMOTE_MODIFIER_CODES = /* @__PURE__ */ new Set(["ControlLeft", "ControlRight", "AltLeft", "AltRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight"]);
+  function rdpKeyLabel(code) {
+    if (code.startsWith("Key")) return code.slice(3);
+    if (code.startsWith("Digit")) return code.slice(5);
+    return { ControlLeft: "Ctrl", AltLeft: "Alt", MetaLeft: "Command / Windows" }[code] || code;
+  }
   function rdpPointerCoordinates(canvas, event) {
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height || !canvas.width || !canvas.height) return null;
@@ -2017,7 +2028,7 @@ ${val.stack}`;
   function setupRdpInputHandlers(canvas, session, options = {}) {
     let pendingPointerMove = null;
     let pointerFrame = 0;
-    let metaChordCode = null;
+    const consumedChordKeyups = /* @__PURE__ */ new Set();
     const flushPointerMove = () => {
       pointerFrame = 0;
       const coordinates = pendingPointerMove;
@@ -2029,9 +2040,20 @@ ${val.stack}`;
       event.preventDefault();
       event.stopPropagation();
       const scancode = SCANCODE_MAP[event.code];
-      if (scancode !== void 0 && options.consumeMetaNext?.()) {
-        applyInput(session, DeviceEvent.keyPressed(SCANCODE_MAP.MetaLeft));
-        metaChordCode = event.code;
+      const remoteModifiers = scancode !== void 0 && !REMOTE_MODIFIER_CODES.has(event.code) ? options.consumeRemoteModifiers?.(event.code) || [] : [];
+      if (scancode !== void 0 && remoteModifiers.length) {
+        applyInputSequence(session, [
+          ...remoteModifiers.map((code) => DeviceEvent.keyPressed(SCANCODE_MAP[code])),
+          DeviceEvent.keyPressed(scancode),
+          DeviceEvent.keyReleased(scancode),
+          ...remoteModifiers.slice().reverse().map((code) => DeviceEvent.keyReleased(SCANCODE_MAP[code]))
+        ]);
+        consumedChordKeyups.add(event.code);
+        options.remoteModifierChordSent?.(remoteModifiers, event.code);
+        if ((clipboardShortcut || remoteModifiers.includes("ControlLeft")) && event.code === "KeyC" && options.clipboardSyncEnabled?.()) {
+          options.remoteCopyStarted?.();
+        }
+        return;
       }
       if (scancode !== void 0) applyInput(session, DeviceEvent.keyPressed(scancode));
       if (clipboardShortcut && event.code === "KeyC" && options.clipboardSyncEnabled?.()) {
@@ -2041,12 +2063,9 @@ ${val.stack}`;
     canvas.addEventListener("keyup", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (consumedChordKeyups.delete(event.code)) return;
       const scancode = SCANCODE_MAP[event.code];
       if (scancode !== void 0) applyInput(session, DeviceEvent.keyReleased(scancode));
-      if (metaChordCode === event.code) {
-        applyInput(session, DeviceEvent.keyReleased(SCANCODE_MAP.MetaLeft));
-        metaChordCode = null;
-      }
     });
     canvas.addEventListener("mousemove", (event) => {
       const coordinates = rdpPointerCoordinates(canvas, event);
@@ -2106,12 +2125,15 @@ ${val.stack}`;
     let session = null;
     let releaseRdpKeyCapture = () => {
     };
+    let clearArmedModifiers = () => {
+    };
     const overlay = api.openElementOverlay({
       title: "RDP local bridge (prototype)",
       width: 1280,
       height: 820,
       onClose: () => {
         releaseRdpKeyCapture();
+        clearArmedModifiers();
         session?.shutdown();
       }
     });
@@ -2127,6 +2149,19 @@ ${val.stack}`;
     metaNext.textContent = "Command / Windows";
     metaNext.title = "Apply the remote Command/Windows modifier to the next key only";
     metaNext.style.cssText = "padding:5px 8px;border:1px solid #666;border-radius:4px;background:#263b4e;color:#eee";
+    const ctrlModifier = document.createElement("button");
+    const altModifier = document.createElement("button");
+    for (const [button, label, title] of [
+      [ctrlModifier, "Ctrl", "Apply remote Ctrl to the next non-modifier key"],
+      [altModifier, "Alt", "Apply remote Alt to the next non-modifier key"]
+    ]) {
+      button.type = "button";
+      button.textContent = label;
+      button.title = title;
+      button.disabled = true;
+      button.setAttribute("aria-pressed", "false");
+      button.style.cssText = "padding:5px 8px;border:1px solid #666;border-radius:4px;background:#263b4e;color:#eee";
+    }
     const canvas = document.createElement("canvas");
     canvas.tabIndex = 0;
     canvas.style.cssText = "width:100%;flex:1;min-height:0;background:#000;outline:none;object-fit:contain";
@@ -2137,10 +2172,43 @@ ${val.stack}`;
     clipboardPaste.spellcheck = false;
     clipboardPaste.style.cssText = "box-sizing:border-box;width:100%;min-height:4.5em;resize:vertical";
     clipboardPaste.disabled = true;
-    controls.append(status, metaNext);
+    controls.append(status, metaNext, ctrlModifier, altModifier);
     root.append(controls, canvas, clipboardPaste);
     canvas.setAttribute("data-fpasoterm-video-capture", "front");
     let metaNextArmed = false;
+    const clearMetaNext = () => {
+      metaNextArmed = false;
+      metaNext.setAttribute("aria-pressed", "false");
+      metaNext.style.background = "#263b4e";
+    };
+    const armedModifiers = /* @__PURE__ */ new Map();
+    const updateModifierButton = (button, armed) => {
+      button.setAttribute("aria-pressed", String(armed));
+      button.style.background = armed ? "#2d7d46" : "#263b4e";
+    };
+    const clearRdpModifiers = () => {
+      for (const button of armedModifiers.values()) {
+        updateModifierButton(button, false);
+      }
+      armedModifiers.clear();
+    };
+    clearArmedModifiers = () => {
+      clearMetaNext();
+      clearRdpModifiers();
+    };
+    const toggleRdpModifier = (code, button, label) => {
+      if (!session) return;
+      if (armedModifiers.has(code)) {
+        armedModifiers.delete(code);
+        updateModifierButton(button, false);
+        status.textContent = `Remote ${label} modifier cancelled.`;
+      } else {
+        armedModifiers.set(code, button);
+        updateModifierButton(button, true);
+        status.textContent = `Remote ${label} armed for the next key.`;
+      }
+      canvas.focus();
+    };
     metaNext.addEventListener("click", () => {
       metaNextArmed = !metaNextArmed;
       metaNext.setAttribute("aria-pressed", String(metaNextArmed));
@@ -2148,6 +2216,8 @@ ${val.stack}`;
       status.textContent = metaNextArmed ? "Command / Windows armed for the next key." : "Command / Windows modifier cancelled.";
       canvas.focus();
     });
+    ctrlModifier.addEventListener("click", () => toggleRdpModifier("ControlLeft", ctrlModifier, "Ctrl"));
+    altModifier.addEventListener("click", () => toggleRdpModifier("AltLeft", altModifier, "Alt"));
     let clipboardSyncEnabled = false;
     let lastLocalClipboard = "";
     let lastRemoteClipboard = "";
@@ -2234,6 +2304,8 @@ ${val.stack}`;
       session = await builder.connect();
       clipboardSyncEnabled = true;
       clipboardPaste.disabled = false;
+      ctrlModifier.disabled = false;
+      altModifier.disabled = false;
       const desktop = session.desktopSize();
       canvas.width = desktop.width;
       canvas.height = desktop.height;
@@ -2242,12 +2314,17 @@ ${val.stack}`;
         remoteCopyStarted: () => {
           status.textContent = "Waiting for the remote clipboard\u2026";
         },
-        consumeMetaNext: () => {
-          if (!metaNextArmed) return false;
-          metaNextArmed = false;
-          metaNext.setAttribute("aria-pressed", "false");
-          metaNext.style.background = "#263b4e";
-          return true;
+        consumeRemoteModifiers: () => {
+          const modifiers = Array.from(armedModifiers.keys());
+          clearRdpModifiers();
+          if (metaNextArmed) {
+            clearMetaNext();
+            modifiers.unshift("MetaLeft");
+          }
+          return modifiers;
+        },
+        remoteModifierChordSent: (modifiers, code) => {
+          status.textContent = `Remote ${[...modifiers.map(rdpKeyLabel), rdpKeyLabel(code)].join("+")} sent.`;
         }
       });
       releaseRdpKeyCapture = overlay.captureKeys?.((event) => {
@@ -2263,8 +2340,11 @@ ${val.stack}`;
       canvas.focus();
       session.run().finally(() => {
         releaseRdpKeyCapture();
+        clearArmedModifiers();
         clipboardSyncEnabled = false;
         clipboardPaste.disabled = true;
+        ctrlModifier.disabled = true;
+        altModifier.disabled = true;
         status.textContent = "RDP session ended.";
         session = null;
       });
