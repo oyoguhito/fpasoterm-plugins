@@ -1,5 +1,9 @@
 # kVNC / noVNC RA2ne live-capture handoff
 
+> Historical capture record. The runtime trace and digest hooks referenced by
+> this document were removed after the relay compatibility fix; this is not a
+> current operational procedure.
+
 This file is a copyable handoff for the currently failing noVNC connection.
 It intentionally contains no password, private key, random value, clipboard
 text, or raw packet body.

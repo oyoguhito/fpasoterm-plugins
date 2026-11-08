@@ -1,5 +1,9 @@
 # kVNC RA2ne / noVNC interoperability report
 
+> Historical investigation record. The wire-level diagnostic instrumentation
+> described below was removed after the native relay compatibility fix. It is
+> retained only to explain the resolved issue, not as a current test procedure.
+
 ## Current evidence
 
 The noVNC port negotiates RFB 3.8 and SecurityType 6 (`RA2ne`), displays the

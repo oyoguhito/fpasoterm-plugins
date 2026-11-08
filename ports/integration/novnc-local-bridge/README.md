@@ -9,7 +9,7 @@ sets one.
 
 ## Install and optional port-author rebuild
 
-For fpasoterm 1.6.17 or later, install the exact target directly from this
+For fpasoterm 1.6.18 or later, install the exact target directly from this
 checkout. This writes the same reviewed target into both the plugin program and
 its native bridge permission; rebuilding a private `plugin.js` is unnecessary:
 
@@ -60,17 +60,14 @@ key/fingerprint is not stored;
 any credentials already entered in the connection prompt remain only in memory
 and RA2ne does not send them until after approval.
 
-fpasoterm 1.6.17 forwards RA2ne's server ciphertext length and its 256-byte
+fpasoterm 1.6.18 forwards RA2ne's server ciphertext length and its 256-byte
 ciphertext as one WebSocket binary message. This preserves the RFB byte stream
 while avoiding noVNC 1.5.0 reading the ciphertext before a separately-framed
 payload arrives. If an approved key still reports `RA2: corrupted server
-encrypted random`, the failure is before password submission. Plugin Activity
-records only the negotiated protocol state and SHA-256 fingerprints, not keys,
-passwords, random values, clipboard contents, or tokens. Verify that it says
-`automatic RFB negotiation (maximum 3.8)` for non-Vine servers, then use the
-joint procedure in
-[`docs/kvnc-ra2ne-novnc-report.md`](../../../docs/kvnc-ra2ne-novnc-report.md).
-Do not disable encryption or key verification as a workaround.
+encrypted random`, the failure is before password submission. Do not disable
+encryption or key verification as a workaround. The former wire-level
+diagnostic instrumentation was removed after the relay compatibility fix; the
+archived investigation notes are not instructions for normal operation.
 
 The safe default is `tcp://127.0.0.1:53390`; it intentionally does not use a
 VNC display. Select a trusted endpoint explicitly, normally
@@ -105,6 +102,13 @@ the selected viewport remains visible.
 Physical arrow keys are not viewport controls: they are sent to the remote
 desktop for menu and application navigation. This distinction keeps remote
 keyboard behavior intact while the toolbar controls local panning.
+
+## Remote input
+
+After connecting, click the remote desktop once to give it focus. **Tab**,
+**Shift+Tab**, arrow keys, and **Escape** are reserved for the remote desktop;
+they do not move focus to the panel's Close button or dismiss the panel. Close
+the bridge only by clicking the visible **Close** button in its title bar.
 
 **Command / Windows** is a one-shot remote modifier: select it and then type
 one alphanumeric key to send the platform-appropriate Command/Windows shortcut
