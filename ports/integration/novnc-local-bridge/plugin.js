@@ -1,6 +1,8 @@
 // @fpasoterm-plugin version: 1.0.7
 // @fpasoterm-plugin description: Verification noVNC client for the strictly declared local TCP bridge.
 // @fpasoterm-plugin allowed-tcp-targets: tcp://127.0.0.1:53390
+// Third-party: noVNC 1.5.0 (MPL-2.0), https://github.com/novnc/noVNC
+// Source and notices: THIRD_PARTY_NOTICES.md and THIRD_PARTY_LICENSES/noVNC-LICENSE.txt
 (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;

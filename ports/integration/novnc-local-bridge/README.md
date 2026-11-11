@@ -244,4 +244,6 @@ single reviewed script. Regenerate it after changing the entry source with
 
 This port bundles noVNC 1.5.0. Its copyright and MPL-2.0 licensing notice,
 plus information for obtaining its source, are recorded in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The reproducible build applies
+its documented RA2ne compatibility patch in memory; its source form is the
+locked noVNC package and `scripts/build-novnc-port.js`.
