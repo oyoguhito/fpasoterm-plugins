@@ -53,8 +53,8 @@ function declaredTarget(source) {
 // shifts the following 256-byte ciphertext. When the server sends those in
 // distinct WebSocket frames, rQshiftBytes reads beyond the available queue.
 // Patch the bundled dependency in memory so `npm ci` remains reproducible and
-// no modified node_modules file is required. The source is MPL-2.0 and its
-// license notice remains in the bundled noVNC code.
+// no modified node_modules file is required. noVNC is MPL-2.0: the source form
+// of this patch is this script plus the version locked in package-lock.json.
 function build() {
   const target = declaredTarget(fs.readFileSync(entry, 'utf8'));
   esbuild.buildSync({
@@ -67,6 +67,8 @@ function build() {
         '// @fpasoterm-plugin version: 1.0.7',
         '// @fpasoterm-plugin description: Verification noVNC client for the strictly declared local TCP bridge.',
         `// @fpasoterm-plugin allowed-tcp-targets: ${target}`,
+        '// Third-party: noVNC 1.5.0 (MPL-2.0), https://github.com/novnc/noVNC',
+        '// Source and notices: THIRD_PARTY_NOTICES.md and THIRD_PARTY_LICENSES/noVNC-LICENSE.txt',
       ].join('\n'),
     },
     outfile: output,
