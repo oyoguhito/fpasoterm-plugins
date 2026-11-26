@@ -116,12 +116,6 @@ it. This one-shot design avoids a remote modifier remaining pressed when focus
 changes or a session ends.
 Pointer movement is coalesced to one update per browser animation frame so
 high-DPI mice and touchpads do not starve remote desktop canvas rendering.
-The RDP canvas presents the latest decoded image at most 30 frames per second,
-rather than drawing every decoded update on fpasoterm's shared WebView UI
-thread. When the panel is minimized, it drops presentation work but keeps the
-RDP session and socket connected; restoring the panel presents the next update.
-This keeps a busy desktop from starving terminal output, including Codex or
-Herdr sessions in another panel.
 The prototype requests a 1280 × 720 remote desktop. Reducing the negotiated
 desktop size was tested but reverted because some servers stopped after a
 partial initial desktop update. Input-event coalescing remains enabled because

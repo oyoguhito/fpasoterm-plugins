@@ -1853,94 +1853,9 @@ ${val.stack}`;
   var api = window.fpasotermPluginApi;
   var DESKTOP_WIDTH = 1280;
   var DESKTOP_HEIGHT = 720;
-  var RDP_PRESENT_INTERVAL_MS = 1e3 / 30;
   function wasmBytes() {
     const binary = atob(wasmBase64);
     return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  }
-  function installRdpPresentationGovernor(canvas) {
-    const context = canvas.getContext("2d");
-    if (!context || typeof context.putImageData !== "function") {
-      return Object.freeze({ active: false, setVisible: () => {
-      }, dispose: () => {
-      } });
-    }
-    const originalPutImageData = context.putImageData;
-    let visible = true;
-    let pendingArgs = null;
-    let animationFrame = 0;
-    let timer = 0;
-    let lastPresentAt = -Infinity;
-    const clearScheduledPresent = () => {
-      if (animationFrame) cancelAnimationFrame(animationFrame);
-      if (timer) clearTimeout(timer);
-      animationFrame = 0;
-      timer = 0;
-    };
-    const present = () => {
-      animationFrame = 0;
-      timer = 0;
-      const args = pendingArgs;
-      pendingArgs = null;
-      if (!visible || !args) return;
-      lastPresentAt = performance.now();
-      Reflect.apply(originalPutImageData, context, args);
-    };
-    const schedulePresent = () => {
-      if (!visible || animationFrame || timer) return;
-      const delay = RDP_PRESENT_INTERVAL_MS - (performance.now() - lastPresentAt);
-      if (delay > 0) {
-        timer = setTimeout(() => {
-          timer = 0;
-          animationFrame = requestAnimationFrame(present);
-        }, delay);
-      } else {
-        animationFrame = requestAnimationFrame(present);
-      }
-    };
-    const coalescedPutImageData = (...args) => {
-      pendingArgs = args;
-      schedulePresent();
-    };
-    try {
-      Object.defineProperty(context, "putImageData", {
-        configurable: true,
-        writable: true,
-        value: coalescedPutImageData
-      });
-    } catch (_) {
-      return Object.freeze({ active: false, setVisible: () => {
-      }, dispose: () => {
-      } });
-    }
-    if (context.putImageData !== coalescedPutImageData) {
-      return Object.freeze({ active: false, setVisible: () => {
-      }, dispose: () => {
-      } });
-    }
-    return Object.freeze({
-      active: true,
-      setVisible(nextVisible) {
-        visible = Boolean(nextVisible);
-        if (!visible) {
-          pendingArgs = null;
-          clearScheduledPresent();
-        } else {
-          lastPresentAt = -Infinity;
-        }
-      },
-      dispose() {
-        pendingArgs = null;
-        clearScheduledPresent();
-        if (context.putImageData === coalescedPutImageData) {
-          Object.defineProperty(context, "putImageData", {
-            configurable: true,
-            writable: true,
-            value: originalPutImageData
-          });
-        }
-      }
-    });
   }
   function formatRdpError(error) {
     if (error instanceof Error) return error.message || error.name;
@@ -2212,15 +2127,12 @@ ${val.stack}`;
     };
     let clearArmedModifiers = () => {
     };
-    let releaseRdpPresentation = () => {
-    };
     const overlay = api.openElementOverlay({
       title: "RDP local bridge (prototype)",
       width: 1280,
       height: 820,
       onClose: () => {
         releaseRdpKeyCapture();
-        releaseRdpPresentation();
         clearArmedModifiers();
         session?.shutdown();
       }
@@ -2263,12 +2175,6 @@ ${val.stack}`;
     controls.append(status, metaNext, ctrlModifier, altModifier);
     root.append(controls, canvas, clipboardPaste);
     canvas.setAttribute("data-fpasoterm-video-capture", "front");
-    const presentationGovernor = installRdpPresentationGovernor(canvas);
-    releaseRdpPresentation = overlay.onVisibilityChange?.((visible) => {
-      presentationGovernor.setVisible(visible);
-      if (!visible) clearArmedModifiers();
-    }) || (() => {
-    });
     let metaNextArmed = false;
     const clearMetaNext = () => {
       metaNextArmed = false;
@@ -2431,14 +2337,9 @@ ${val.stack}`;
       }) || (() => {
       });
       status.textContent = `Connected: ${desktop.width} \xD7 ${desktop.height} \u2014 clipboard sync is active.`;
-      if (!presentationGovernor.active) {
-        api.log("RDP frame pacing could not attach; remote presentation remains unthrottled.");
-      }
       canvas.focus();
       session.run().finally(() => {
         releaseRdpKeyCapture();
-        releaseRdpPresentation();
-        presentationGovernor.dispose();
         clearArmedModifiers();
         clipboardSyncEnabled = false;
         clipboardPaste.disabled = true;
