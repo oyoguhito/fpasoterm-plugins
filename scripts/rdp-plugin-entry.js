@@ -7,10 +7,107 @@ const target = __FPASOTERM_RDP_TARGET__;
 const api = window.fpasotermPluginApi;
 const DESKTOP_WIDTH = 1280;
 const DESKTOP_HEIGHT = 720;
+// IronRDP paints decoded updates with CanvasRenderingContext2D.putImageData
+// on this WebView's main thread.  Keep the latest update only and present at
+// most 30fps so a busy remote desktop cannot starve fpasoterm's terminal
+// renderer (and therefore Codex/Herdr output) on a single-core or memory
+// constrained host.
+const RDP_PRESENT_INTERVAL_MS = 1000 / 30;
 
 function wasmBytes() {
   const binary = atob(wasmBase64);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+// IronRDP does not expose a pause API.  Its generated renderer obtains the
+// 2D context through canvas.getContext() while SessionBuilder.renderCanvas()
+// is called, so installing this narrow per-canvas presentation governor first
+// leaves protocol decode and the session socket live while dropping only
+// obsolete browser paint work.  Hidden plugin panels discard frame presents
+// entirely; restoring one immediately accepts the next decoded frame.
+function installRdpPresentationGovernor(canvas) {
+  const context = canvas.getContext('2d');
+  if (!context || typeof context.putImageData !== 'function') {
+    return Object.freeze({ active: false, setVisible: () => {}, dispose: () => {} });
+  }
+
+  const originalPutImageData = context.putImageData;
+  let visible = true;
+  let pendingArgs = null;
+  let animationFrame = 0;
+  let timer = 0;
+  let lastPresentAt = -Infinity;
+
+  const clearScheduledPresent = () => {
+    if (animationFrame) cancelAnimationFrame(animationFrame);
+    if (timer) clearTimeout(timer);
+    animationFrame = 0;
+    timer = 0;
+  };
+  const present = () => {
+    animationFrame = 0;
+    timer = 0;
+    const args = pendingArgs;
+    pendingArgs = null;
+    if (!visible || !args) return;
+    lastPresentAt = performance.now();
+    Reflect.apply(originalPutImageData, context, args);
+  };
+  const schedulePresent = () => {
+    if (!visible || animationFrame || timer) return;
+    const delay = RDP_PRESENT_INTERVAL_MS - (performance.now() - lastPresentAt);
+    if (delay > 0) {
+      timer = setTimeout(() => {
+        timer = 0;
+        animationFrame = requestAnimationFrame(present);
+      }, delay);
+    } else {
+      animationFrame = requestAnimationFrame(present);
+    }
+  };
+  const coalescedPutImageData = (...args) => {
+    pendingArgs = args;
+    schedulePresent();
+  };
+
+  try {
+    Object.defineProperty(context, 'putImageData', {
+      configurable: true,
+      writable: true,
+      value: coalescedPutImageData,
+    });
+  } catch (_) {
+    return Object.freeze({ active: false, setVisible: () => {}, dispose: () => {} });
+  }
+  if (context.putImageData !== coalescedPutImageData) {
+    return Object.freeze({ active: false, setVisible: () => {}, dispose: () => {} });
+  }
+
+  return Object.freeze({
+    active: true,
+    setVisible(nextVisible) {
+      visible = Boolean(nextVisible);
+      if (!visible) {
+        pendingArgs = null;
+        clearScheduledPresent();
+      } else {
+        // Do not make a restored panel wait behind the previous visible
+        // frame's cadence. The next remote update becomes immediately useful.
+        lastPresentAt = -Infinity;
+      }
+    },
+    dispose() {
+      pendingArgs = null;
+      clearScheduledPresent();
+      if (context.putImageData === coalescedPutImageData) {
+        Object.defineProperty(context, 'putImageData', {
+          configurable: true,
+          writable: true,
+          value: originalPutImageData,
+        });
+      }
+    },
+  });
 }
 
 // wasm-bindgen rejects with IronError objects rather than JavaScript Error.
@@ -225,9 +322,15 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   let session = null;
   let releaseRdpKeyCapture = () => {};
   let clearArmedModifiers = () => {};
+  let releaseRdpPresentation = () => {};
   const overlay = api.openElementOverlay({
     title: 'RDP local bridge (prototype)', width: 1280, height: 820,
-    onClose: () => { releaseRdpKeyCapture(); clearArmedModifiers(); session?.shutdown(); },
+    onClose: () => {
+      releaseRdpKeyCapture();
+      releaseRdpPresentation();
+      clearArmedModifiers();
+      session?.shutdown();
+    },
   });
   const root = overlay.element;
   root.replaceChildren();
@@ -261,6 +364,11 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
   // is retained as a fallback, but macOS WebViews can transiently reparent a
   // local overlay while an RDP surface is focused.
   canvas.setAttribute('data-fpasoterm-video-capture', 'front');
+  const presentationGovernor = installRdpPresentationGovernor(canvas);
+  releaseRdpPresentation = overlay.onVisibilityChange?.((visible) => {
+    presentationGovernor.setVisible(visible);
+    if (!visible) clearArmedModifiers();
+  }) || (() => {});
   let metaNextArmed = false;
   const clearMetaNext = () => {
     metaNextArmed = false;
@@ -416,9 +524,16 @@ api.registerCommand('rdp-local-bridge', 'Open RDP local bridge (prototype)', asy
       if (event.type === 'keyup') applyInput(session, DeviceEvent.keyReleased(scancode));
       return true;
     }) || (() => {});
-    status.textContent = `Connected: ${desktop.width} × ${desktop.height} — clipboard sync is active.`; canvas.focus();
+    status.textContent = `Connected: ${desktop.width} × ${desktop.height} — clipboard sync is active.`;
+    if (!presentationGovernor.active) {
+      api.log('RDP frame pacing could not attach; remote presentation remains unthrottled.');
+    }
+    canvas.focus();
     session.run().finally(() => {
-      releaseRdpKeyCapture(); clearArmedModifiers();
+      releaseRdpKeyCapture();
+      releaseRdpPresentation();
+      presentationGovernor.dispose();
+      clearArmedModifiers();
       clipboardSyncEnabled = false; clipboardPaste.disabled = true;
       ctrlModifier.disabled = true; altModifier.disabled = true;
       status.textContent = 'RDP session ended.'; session = null;
