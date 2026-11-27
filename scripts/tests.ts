@@ -266,6 +266,9 @@ assert.match(rdpEntrySource, /const scale = Math\.min\(rect\.width \/ canvas\.wi
 assert.match(rdpEntrySource, /renderedWidth/);
 assert.match(rdpEntrySource, /function setupRdpInputHandlers\(canvas, session, options = \{\}\)/);
 assert.match(rdpEntrySource, /DeviceEvent\.mouseButtonPressed/);
+assert.match(rdpEntrySource, /const pressedPointerButtons = new Set\(\)/);
+assert.match(rdpEntrySource, /DeviceEvent\.mouseMove\(coordinates\.x, coordinates\.y\),\s*DeviceEvent\.mouseButtonPressed\(event\.button\)/);
+assert.match(rdpEntrySource, /DeviceEvent\.mouseMove\(coordinates\.x, coordinates\.y\),\s*DeviceEvent\.mouseButtonReleased\(event\.button\)/);
 assert.match(rdpEntrySource, /requestAnimationFrame\(flushPointerMove\)/);
 assert.match(rdpEntrySource, /cancelAnimationFrame\(pointerFrame\)/);
 assert.match(rdpEntrySource, /const DESKTOP_WIDTH = 1280/);
@@ -286,6 +289,12 @@ assert.match(rdpEntrySource, /consumedChordKeyups\.add\(event\.code\)/);
 assert.match(rdpEntrySource, /options\.remoteModifierChordSent\?\.\(remoteModifiers, event\.code\)/);
 assert.match(rdpEntrySource, /ctrlModifier\.addEventListener\('click'/);
 assert.match(rdpEntrySource, /altModifier\.addEventListener\('click'/);
+assert.match(rdpEntrySource, /ctrlAltDelete\.textContent = 'Ctrl\+Alt\+Del'/);
+assert.match(rdpEntrySource, /zoomOut\.textContent = '−'/);
+assert.match(rdpEntrySource, /zoomReset\.textContent = '100%'/);
+assert.match(rdpEntrySource, /zoomIn\.textContent = '\+'/);
+assert.match(rdpEntrySource, /const setDesktopZoom = \(requested\) =>/);
+assert.match(rdpEntrySource, /Math\.min\(200, Math\.max\(50, requested\)\)/);
 assert.match(rdpEntrySource, /clearArmedModifiers\(\); session\?\.shutdown\(\)/);
 assert.match(rdpEntrySource, /overlay\.captureKeys\?\.\(\(event\) =>/);
 assert.match(rdpEntrySource, /event\.code !== 'Escape' && event\.key !== 'Escape'/);
@@ -315,6 +324,9 @@ assert.match(rdpEntrySource, /remote update contained no supported plain text/);
 assert.doesNotMatch(rdpEntrySource, /disableClipboardSyncAfterReadFailure/);
 assert.match(rdpReadme, /WebView platforms deny programmatic clipboard reads/);
 assert.match(rdpReadme, /Remote-to-local synchronization\s+remains automatic/);
+assert.match(rdpReadme, /dedicated \*\*Ctrl\+Alt\+Del\*\* button/);
+assert.match(rdpReadme, /local canvas view\s+from 50% through 200%/);
+assert.match(rdpReadme, /same transaction as its current pointer position/);
 assert.match(rdpEntrySource, /setupRdpInputHandlers\(canvas, session, \{/);
 const pluginSearchSource = fs.readFileSync(
   path.join(root, 'ports', 'productivity', 'plugin-search', 'plugin.ts'),

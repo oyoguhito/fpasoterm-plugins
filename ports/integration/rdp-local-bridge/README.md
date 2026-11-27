@@ -106,14 +106,24 @@ remains automatic for the connected session.
 After the status changes to `Connected`, click inside the remote desktop before
 typing. The port forwards keyboard, pointer, button, and wheel events only from
 the RDP canvas, so fpasoterm shortcuts outside the overlay remain available.
-The toolbar provides **Ctrl** and **Alt** buttons for cases where a browser or
-window manager cannot deliver a physical modifier reliably. Click **Ctrl** or
-**Alt** to arm it (green), then press the next non-modifier key on the remote
-desktop. The port sends modifier-down, key-down, key-up, and modifier-up in one
-RDP input transaction, so `Ctrl` then `C` sends `Ctrl+C`, and arming both then
-pressing Delete sends `Ctrl+Alt+Delete`. Click an armed button again to cancel
-it. This one-shot design avoids a remote modifier remaining pressed when focus
-changes or a session ends.
+The toolbar provides **Command / Windows**, **Ctrl**, and **Alt** buttons for
+cases where a browser or window manager cannot deliver a physical modifier
+reliably. Click one or more modifier buttons to arm them (green), then press
+the next non-modifier key on the remote desktop. The port sends
+modifier-down, key-down, key-up, and modifier-up in one RDP input transaction,
+so `Ctrl` then `C` sends `Ctrl+C`, and arming both then pressing Delete sends
+`Ctrl+Alt+Delete`. The dedicated **Ctrl+Alt+Del** button sends that secure
+attention chord directly. Click an armed button again to cancel it. This
+one-shot design avoids a remote modifier remaining pressed when focus changes
+or a session ends.
+
+The **−**, percentage, and **+** buttons change only the local canvas view
+from 50% through 200%; they do not renegotiate the remote desktop size. The
+pointer conversion uses the displayed canvas rectangle, so clicking still maps
+to the correct remote pixel at every zoom level. Every RDP button press/release
+is sent in the same transaction as its current pointer position. This preserves
+the order of RDP's delta updates and lets nested terminal viewers receive both
+mouse motion and click activation.
 Pointer movement is coalesced to one update per browser animation frame so
 high-DPI mice and touchpads do not starve remote desktop canvas rendering.
 The prototype requests a 1280 × 720 remote desktop. Reducing the negotiated
