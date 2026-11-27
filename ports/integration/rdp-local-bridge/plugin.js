@@ -2028,6 +2028,7 @@ ${val.stack}`;
   function setupRdpInputHandlers(canvas, session, options = {}) {
     let pendingPointerMove = null;
     let pointerFrame = 0;
+    const pressedPointerButtons = /* @__PURE__ */ new Set();
     const consumedChordKeyups = /* @__PURE__ */ new Set();
     const flushPointerMove = () => {
       pointerFrame = 0;
@@ -2078,16 +2079,32 @@ ${val.stack}`;
       event.stopPropagation();
       canvas.focus();
       const coordinates = rdpPointerCoordinates(canvas, event);
+      if (!coordinates) return;
       if (pointerFrame) cancelAnimationFrame(pointerFrame);
       pointerFrame = 0;
       pendingPointerMove = null;
-      if (coordinates) applyInput(session, DeviceEvent.mouseMove(coordinates.x, coordinates.y));
-      applyInput(session, DeviceEvent.mouseButtonPressed(event.button));
+      applyInputSequence(session, [
+        DeviceEvent.mouseMove(coordinates.x, coordinates.y),
+        DeviceEvent.mouseButtonPressed(event.button)
+      ]);
+      pressedPointerButtons.add(event.button);
     });
     canvas.addEventListener("mouseup", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      applyInput(session, DeviceEvent.mouseButtonReleased(event.button));
+      if (!pressedPointerButtons.delete(event.button)) return;
+      const coordinates = rdpPointerCoordinates(canvas, event);
+      if (pointerFrame) cancelAnimationFrame(pointerFrame);
+      pointerFrame = 0;
+      pendingPointerMove = null;
+      if (coordinates) {
+        applyInputSequence(session, [
+          DeviceEvent.mouseMove(coordinates.x, coordinates.y),
+          DeviceEvent.mouseButtonReleased(event.button)
+        ]);
+      } else {
+        applyInput(session, DeviceEvent.mouseButtonReleased(event.button));
+      }
     });
     canvas.addEventListener("wheel", (event) => {
       event.preventDefault();
@@ -2143,12 +2160,13 @@ ${val.stack}`;
     const status = document.createElement("div");
     status.textContent = `Connecting to ${target}\u2026`;
     const controls = document.createElement("div");
-    controls.style.cssText = "display:flex;align-items:center;gap:8px";
+    controls.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:8px";
+    const buttonStyle = "padding:5px 8px;border:1px solid #666;border-radius:4px;background:#263b4e;color:#eee";
     const metaNext = document.createElement("button");
     metaNext.type = "button";
     metaNext.textContent = "Command / Windows";
     metaNext.title = "Apply the remote Command/Windows modifier to the next key only";
-    metaNext.style.cssText = "padding:5px 8px;border:1px solid #666;border-radius:4px;background:#263b4e;color:#eee";
+    metaNext.style.cssText = buttonStyle;
     const ctrlModifier = document.createElement("button");
     const altModifier = document.createElement("button");
     for (const [button, label, title] of [
@@ -2160,11 +2178,37 @@ ${val.stack}`;
       button.title = title;
       button.disabled = true;
       button.setAttribute("aria-pressed", "false");
-      button.style.cssText = "padding:5px 8px;border:1px solid #666;border-radius:4px;background:#263b4e;color:#eee";
+      button.style.cssText = buttonStyle;
     }
+    const ctrlAltDelete = document.createElement("button");
+    ctrlAltDelete.type = "button";
+    ctrlAltDelete.textContent = "Ctrl+Alt+Del";
+    ctrlAltDelete.title = "Send Ctrl+Alt+Delete to the remote desktop";
+    ctrlAltDelete.disabled = true;
+    ctrlAltDelete.style.cssText = buttonStyle;
+    const zoomOut = document.createElement("button");
+    zoomOut.type = "button";
+    zoomOut.textContent = "\u2212";
+    zoomOut.title = "Make the local RDP desktop view smaller";
+    zoomOut.disabled = true;
+    zoomOut.style.cssText = buttonStyle;
+    const zoomReset = document.createElement("button");
+    zoomReset.type = "button";
+    zoomReset.textContent = "100%";
+    zoomReset.title = "Reset the local RDP desktop view zoom";
+    zoomReset.disabled = true;
+    zoomReset.style.cssText = buttonStyle;
+    const zoomIn = document.createElement("button");
+    zoomIn.type = "button";
+    zoomIn.textContent = "+";
+    zoomIn.title = "Make the local RDP desktop view larger";
+    zoomIn.disabled = true;
+    zoomIn.style.cssText = buttonStyle;
+    const desktopViewport = document.createElement("div");
+    desktopViewport.style.cssText = "display:flex;flex:1;min-height:0;overflow:auto;align-items:center;justify-content:center;background:#000";
     const canvas = document.createElement("canvas");
     canvas.tabIndex = 0;
-    canvas.style.cssText = "width:100%;flex:1;min-height:0;background:#000;outline:none;object-fit:contain";
+    canvas.style.cssText = "display:block;width:100%;height:auto;max-width:none;flex:0 0 auto;background:#000;outline:none";
     const clipboardPaste = document.createElement("textarea");
     clipboardPaste.rows = 3;
     clipboardPaste.placeholder = "Local \u2192 RDP: click here, then press Ctrl+V";
@@ -2172,8 +2216,9 @@ ${val.stack}`;
     clipboardPaste.spellcheck = false;
     clipboardPaste.style.cssText = "box-sizing:border-box;width:100%;min-height:4.5em;resize:vertical";
     clipboardPaste.disabled = true;
-    controls.append(status, metaNext, ctrlModifier, altModifier);
-    root.append(controls, canvas, clipboardPaste);
+    controls.append(status, metaNext, ctrlModifier, altModifier, ctrlAltDelete, zoomOut, zoomReset, zoomIn);
+    desktopViewport.append(canvas);
+    root.append(controls, desktopViewport, clipboardPaste);
     canvas.setAttribute("data-fpasoterm-video-capture", "front");
     let metaNextArmed = false;
     const clearMetaNext = () => {
@@ -2218,6 +2263,31 @@ ${val.stack}`;
     });
     ctrlModifier.addEventListener("click", () => toggleRdpModifier("ControlLeft", ctrlModifier, "Ctrl"));
     altModifier.addEventListener("click", () => toggleRdpModifier("AltLeft", altModifier, "Alt"));
+    ctrlAltDelete.addEventListener("click", () => {
+      if (!session) return;
+      clearArmedModifiers();
+      applyInputSequence(session, [
+        DeviceEvent.keyPressed(SCANCODE_MAP.ControlLeft),
+        DeviceEvent.keyPressed(SCANCODE_MAP.AltLeft),
+        DeviceEvent.keyPressed(SCANCODE_MAP.Delete),
+        DeviceEvent.keyReleased(SCANCODE_MAP.Delete),
+        DeviceEvent.keyReleased(SCANCODE_MAP.AltLeft),
+        DeviceEvent.keyReleased(SCANCODE_MAP.ControlLeft)
+      ]);
+      status.textContent = "Remote Ctrl+Alt+Delete sent.";
+      canvas.focus();
+    });
+    let desktopZoomPercent = 100;
+    const setDesktopZoom = (requested) => {
+      desktopZoomPercent = Math.min(200, Math.max(50, requested));
+      canvas.style.width = `${desktopZoomPercent}%`;
+      zoomReset.textContent = `${desktopZoomPercent}%`;
+      status.textContent = `Local RDP view zoom: ${desktopZoomPercent}%.`;
+      canvas.focus();
+    };
+    zoomOut.addEventListener("click", () => setDesktopZoom(desktopZoomPercent - 10));
+    zoomIn.addEventListener("click", () => setDesktopZoom(desktopZoomPercent + 10));
+    zoomReset.addEventListener("click", () => setDesktopZoom(100));
     let clipboardSyncEnabled = false;
     let lastLocalClipboard = "";
     let lastRemoteClipboard = "";
@@ -2306,6 +2376,10 @@ ${val.stack}`;
       clipboardPaste.disabled = false;
       ctrlModifier.disabled = false;
       altModifier.disabled = false;
+      ctrlAltDelete.disabled = false;
+      zoomOut.disabled = false;
+      zoomReset.disabled = false;
+      zoomIn.disabled = false;
       const desktop = session.desktopSize();
       canvas.width = desktop.width;
       canvas.height = desktop.height;
@@ -2345,6 +2419,10 @@ ${val.stack}`;
         clipboardPaste.disabled = true;
         ctrlModifier.disabled = true;
         altModifier.disabled = true;
+        ctrlAltDelete.disabled = true;
+        zoomOut.disabled = true;
+        zoomReset.disabled = true;
+        zoomIn.disabled = true;
         status.textContent = "RDP session ended.";
         session = null;
       });
